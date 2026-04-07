@@ -18,7 +18,11 @@ import app.gamenative.events.SteamEvent
 import app.gamenative.ui.enums.Orientation
 import java.util.EnumSet
 import app.gamenative.service.SteamService
+import app.gamenative.service.amazon.AmazonService
 import app.gamenative.service.epic.EpicCloudSavesManager
+import app.gamenative.service.epic.EpicService
+import app.gamenative.service.gog.GOGService
+import app.gamenative.utils.CustomGameScanner
 import app.gamenative.ui.data.MainState
 import app.gamenative.ui.enums.ConnectionState
 import app.gamenative.ui.screen.PluviaScreen
@@ -453,12 +457,37 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             // Resolve hero image URL for the booting splash background
             val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
-            val heroUrl = if (gameSource == GameSource.STEAM) {
-                val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
-                val steamApp = SteamService.getAppInfoOf(gameId)
-                steamApp?.getHeroUrl()?.ifEmpty { steamApp.headerUrl } ?: ""
-            } else {
-                ""
+            val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
+            val heroUrl = when (gameSource) {
+                GameSource.STEAM -> {
+                    val steamApp = SteamService.getAppInfoOf(gameId)
+                    steamApp?.getHeroUrl()?.ifEmpty { steamApp.headerUrl } ?: ""
+                }
+                GameSource.GOG -> {
+                    val game = GOGService.getGOGGameOf(gameId.toString())
+                    game?.backgroundUrl?.ifEmpty { game.imageUrl } ?: ""
+                }
+                GameSource.EPIC -> {
+                    val game = EpicService.getEpicGameOf(gameId)
+                    game?.artPortrait?.ifEmpty { game.artCover.ifEmpty { game.artSquare } } ?: ""
+                }
+                GameSource.AMAZON -> {
+                    val game = AmazonService.getAmazonGameByAppId(gameId)
+                    game?.heroUrl?.ifEmpty { game.artUrl } ?: ""
+                }
+                GameSource.CUSTOM_GAME -> {
+                    val folderPath = CustomGameScanner.getFolderPathFromAppId(appId)
+                    if (folderPath != null) {
+                        val folder = java.io.File(folderPath)
+                        val heroFile = folder.listFiles()?.firstOrNull { file ->
+                            file.isFile && file.name.startsWith("steamgriddb_grid_hero", ignoreCase = true) &&
+                                (file.name.endsWith(".png", ignoreCase = true) ||
+                                    file.name.endsWith(".jpg", ignoreCase = true) ||
+                                    file.name.endsWith(".webp", ignoreCase = true))
+                        }
+                        heroFile?.let { android.net.Uri.fromFile(it).toString() } ?: ""
+                    } else ""
+                }
             }
             setBootingSplashHeroImageUrl(heroUrl)
             setShowBootingSplash(true)
