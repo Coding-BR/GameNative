@@ -880,16 +880,19 @@ object SteamAutoCloud {
                         } == true
                     }.inWholeMicroseconds
 
-                    /*TODO: hasLocalChanges should be true if the user plays offline for the first time without ever pulling cloud saves
-                       If that happens, the next time they go online, their change number is -1, and saves are always overwritten by cloud*/
-
-                    // If cache is absent but local files exist and a prior sync was recorded,
-                    // the cache was cleared on upgrade due to a UFS path fix — treat as conflict
-                    // so the user can choose which save to keep rather than silently overwriting.
-                    val isUpgradeConflict = cacheIsAbsentOrEmpty && allLocalUserFiles.isNotEmpty() && localAppChangeNumber >= 0
-                    if (isUpgradeConflict) {
-                        hasLocalChanges = true
-                        conflictUfsVersion = CURRENT_UFS_PARSE_VERSION
+                    val hasUncachedLocalFiles = cacheIsAbsentOrEmpty && allLocalUserFiles.isNotEmpty()
+                    if (hasUncachedLocalFiles) {
+                        if (localAppChangeNumber < 0) {
+                            // first offline play: never synced, no cache, but local
+                            // files exist — cloud would silently overwrite them
+                            hasLocalChanges = true
+                            conflictUfsVersion = CURRENT_UFS_PARSE_VERSION
+                        } else {
+                            // app update cleared the cache but a prior sync was
+                            // recorded — can't tell if local files changed
+                            hasLocalChanges = true
+                            conflictUfsVersion = CURRENT_UFS_PARSE_VERSION
+                        }
                     }
 
                     if (!hasLocalChanges) {
