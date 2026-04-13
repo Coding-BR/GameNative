@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
+import android.view.View;
 
 // import com.winlator.R;
 // import com.winlator.XrActivity;
@@ -14,6 +15,7 @@ import com.winlator.math.XForm;
 import com.winlator.renderer.material.CursorMaterial;
 import com.winlator.renderer.material.ShaderMaterial;
 import com.winlator.renderer.material.WindowMaterial;
+import com.winlator.widget.FrameRating;
 import com.winlator.widget.XServerView;
 import com.winlator.xserver.Bitmask;
 import com.winlator.xserver.Cursor;
@@ -56,6 +58,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private int renderTargetHeightOverride = 0;
     private boolean sceneInitialized = false;
     private final EffectComposer effectComposer;
+    private FrameRating frameRating;
 
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
@@ -132,6 +135,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
         else {
             drawScene();
+        }
+
+        if (frameRating != null && frameRating.getVisibility() == View.VISIBLE) {
+            frameRating.update();
         }
     }
 
@@ -494,5 +501,9 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public EffectComposer getEffectComposer() {
         return effectComposer;
+    }
+
+    public void setFrameRating(FrameRating frameRating) {
+        this.frameRating = frameRating;
     }
 }
