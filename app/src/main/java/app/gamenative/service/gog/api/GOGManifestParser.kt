@@ -204,41 +204,45 @@ class GOGManifestParser @Inject constructor() {
     }
 
     /**
-     * Build a mapping of chunk MD5 -> secure CDN URL
+     * Build a mapping of chunk MD5 -> ordered secure CDN URLs.
      *
      * @param chunks List of chunk MD5 hashes
-     * @param baseUrls List of base CDN URLs (e.g., https://gog-cdn-fastly.gog.com/...)
-     * @return Map of chunk MD5 to download URL
+     * @param baseUrls Ordered base CDN URLs (fastest first)
+     * @return Map of chunk MD5 to ordered download URL candidates
      */
-    fun buildChunkUrlMap(chunks: List<String>, baseUrls: List<String>): Map<String, String> {
+    fun buildChunkUrlCandidates(chunks: List<String>, baseUrls: List<String>): Map<String, List<String>> {
         if (baseUrls.isEmpty()) {
             Timber.tag(TAG).w("No base CDN URLs provided")
             return emptyMap()
         }
 
-        // Use the first (highest priority) CDN URL as base
-        val baseCdnUrl = baseUrls.first()
-
         return chunks.associateWith { chunkMd5 ->
-            buildChunkUrl(baseCdnUrl, chunkMd5)
+            baseUrls.map { baseCdnUrl -> buildChunkUrl(baseCdnUrl, chunkMd5) }
         }
     }
 
+    // Backward-compatible helper used by existing tests/callers that expect one URL per chunk.
+    fun buildChunkUrlMap(chunks: List<String>, baseUrls: List<String>): Map<String, String> {
+        return buildChunkUrlCandidates(chunks, baseUrls)
+            .mapNotNull { (chunk, urls) -> urls.firstOrNull()?.let { chunk to it } }
+            .toMap()
+    }
+
     /**
-     * Build a mapping of chunk MD5 -> secure CDN URL with per-product URLs
-     * Each product (base game + DLCs) has its own CDN path with different URLs
+     * Build a mapping of chunk MD5 -> ordered secure CDN URLs with per-product URLs.
+     * Each product (base game + DLCs) has its own CDN path with different URLs.
      *
      * @param chunks List of chunk MD5 hashes
      * @param chunkToProductMap Map of chunk hash to product ID
-     * @param productUrlMap Map of product ID to list of secure URLs for that product
-     * @return Map of chunk MD5 to download URL
+     * @param productUrlMap Map of product ID to ordered secure URLs for that product
+     * @return Map of chunk MD5 to ordered download URL candidates
      */
-    fun buildChunkUrlMapWithProducts(
+    fun buildChunkUrlCandidatesWithProducts(
         chunks: List<String>,
         chunkToProductMap: Map<String, String>,
         productUrlMap: Map<String, List<String>>
-    ): Map<String, String> {
-        val chunkUrlMap = mutableMapOf<String, String>()
+    ): Map<String, List<String>> {
+        val chunkUrlCandidates = mutableMapOf<String, List<String>>()
 
         for (chunkMd5 in chunks) {
             val productId = chunkToProductMap[chunkMd5]
@@ -253,16 +257,24 @@ class GOGManifestParser @Inject constructor() {
                 continue
             }
 
-            // Use the first (highest priority) CDN URL for this product
-            val baseCdnUrl = productUrls.first()
-
-            val chunkUrl = buildChunkUrl(baseCdnUrl, chunkMd5)
-
-            chunkUrlMap[chunkMd5] = chunkUrl
+            chunkUrlCandidates[chunkMd5] = productUrls.map { baseCdnUrl ->
+                buildChunkUrl(baseCdnUrl, chunkMd5)
+            }
         }
 
-        Timber.tag(TAG).d("Built ${chunkUrlMap.size} chunk URLs from ${productUrlMap.size} product(s)")
-        return chunkUrlMap
+        Timber.tag(TAG).d("Built ${chunkUrlCandidates.size} chunk URL candidate sets from ${productUrlMap.size} product(s)")
+        return chunkUrlCandidates
+    }
+
+    // Backward-compatible helper used by existing tests/callers that expect one URL per chunk.
+    fun buildChunkUrlMapWithProducts(
+        chunks: List<String>,
+        chunkToProductMap: Map<String, String>,
+        productUrlMap: Map<String, List<String>>
+    ): Map<String, String> {
+        return buildChunkUrlCandidatesWithProducts(chunks, chunkToProductMap, productUrlMap)
+            .mapNotNull { (chunk, urls) -> urls.firstOrNull()?.let { chunk to it } }
+            .toMap()
     }
 
     private fun buildChunkUrl(baseCdnUrl: String, chunkMd5: String): String {
