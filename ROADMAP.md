@@ -19,7 +19,8 @@ These are the things we are actively working on:
 - **Non-Steam store support** — downloads, installs, DLC and deletions working well for Epic, GOG and Amazon
 - **Epic and GOG** — cloud saves working reliably for both, EOS DRM working for Epic
 - **Steam Input** — fixing reliability issues across games including No Man's Sky and others
-- **Onscreen controller** — making PC games genuinely playable on a touchscreen, including layout, comfort and local multiplayer support
+- **Controller** — making PC games genuinely playable on a touchscreen, including layout, comfort and also local multiplayer support
+- **External devices** — reliable support for keyboards, mice and other external peripherals
 - **External storage** — reliable external storage with fast downloads and fast game launches
 - **Code quality** — reducing complexity and duplication, especially across Epic, GOG and Amazon integrations
 - **Game compatibility** — more games working out of the box without manual tweaks
