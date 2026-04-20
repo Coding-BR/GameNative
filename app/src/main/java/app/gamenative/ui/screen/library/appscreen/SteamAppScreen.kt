@@ -1312,11 +1312,31 @@ class SteamAppScreen : BaseAppScreen() {
             val appDao = remember { SteamService.instance?.appDao }
             var currentEnabledIds by remember { mutableStateOf<Set<Long>?>(null) }
 
+            // Load container for mod path override
+            val containerId = "STEAM_$gameId"
+            var workshopModPath by remember(gameId) { mutableStateOf("") }
+            val wsGameRootDir = remember(gameId) {
+                if (SteamService.isAppInstalled(gameId)) File(SteamService.getAppDirPath(gameId)) else null
+            }
+            val wsWinePrefix = remember(gameId) {
+                runCatching {
+                    val container = ContainerUtils.getContainer(context, containerId)
+                    container.getRootDir()?.let { File(it, ".wine").absolutePath } ?: ""
+                }.getOrDefault("")
+            }
+
             LaunchedEffect(gameId) {
                 val idsString = withContext(Dispatchers.IO) {
                     appDao?.getEnabledWorkshopItemIds(gameId)
                 }
                 currentEnabledIds = WorkshopManager.parseEnabledIds(idsString)
+                // Load saved mod path override
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val container = ContainerUtils.getContainer(context, containerId)
+                        workshopModPath = container.getExtra("workshopModPath", "")
+                    }
+                }
             }
 
             val loadedIds = currentEnabledIds
@@ -1324,6 +1344,9 @@ class SteamAppScreen : BaseAppScreen() {
                 WorkshopManagerDialog(
                     visible = true,
                     currentEnabledIds = loadedIds,
+                    workshopModPath = workshopModPath,
+                    gameRootDir = wsGameRootDir,
+                    winePrefix = wsWinePrefix,
                     onGetDisplayInfo = { context ->
                         return@WorkshopManagerDialog getGameDisplayInfo(context, libraryItem)
                     },
@@ -1347,6 +1370,17 @@ class SteamAppScreen : BaseAppScreen() {
                                     gameRootDir = gameRootDir,
                                     gameName = gameName,
                                 )
+                            }
+                        }
+                    },
+                    onModPathChanged = { newPath ->
+                        workshopModPath = newPath
+                        CoroutineScope(Dispatchers.IO).launch {
+                            runCatching {
+                                val container = ContainerUtils.getContainer(context, containerId)
+                                container.putExtra("workshopModPath", if (newPath.isEmpty()) null else newPath)
+                                container.saveData()
+                                Timber.tag("Workshop").i("Workshop mod path override set to: '$newPath' for gameId=$gameId")
                             }
                         }
                     },
