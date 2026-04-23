@@ -22,5 +22,15 @@ data class GameDisplayInfo(
     val headerUrl: String? = null, // Header image URL (for SteamGridDB, can use grid as header)
     val compatibilityMessage: String? = null, // Compatibility message text (e.g., "Works on your GPU")
     val compatibilityColor: ULong? = null, // Compatibility message color (ARGB)
-)
+    val hltbStats: HltbStats? = null, // How Long To Beat stats
+) {
+    /** HLTB stats to display on game pages. */
+    data class HltbStats(
+        val mainHours: String,
+        val mainPlusHours: String,
+        val completeHours: String,
+        val allStylesHours: String,
+        val gameId: Int,
+    )
+}
 

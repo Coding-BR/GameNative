@@ -895,8 +895,33 @@ abstract class BaseAppScreen {
         onBack: () -> Unit,
     ) {
         val context = LocalContext.current
-        val displayInfo = getGameDisplayInfo(context, libraryItem)
+        val displayInfoBase = getGameDisplayInfo(context, libraryItem)
         val appId = libraryItem.appId
+
+        // Fetch HLTB stats asynchronously
+        var hltbStats by remember(displayInfoBase.name) {
+            mutableStateOf<GameDisplayInfo.HltbStats?>(null)
+        }
+        val hltbScope = rememberCoroutineScope()
+        LaunchedEffect(displayInfoBase.name) {
+            if (displayInfoBase.name.isNotBlank()) {
+                try {
+                    val stats = app.gamenative.utils.HltbService.getStats(displayInfoBase.name)
+                    if (stats != null) {
+                        hltbStats = GameDisplayInfo.HltbStats(
+                            mainHours = stats.mainHours,
+                            mainPlusHours = stats.mainPlusHours,
+                            completeHours = stats.completeHours,
+                            allStylesHours = stats.allStylesHours,
+                            gameId = stats.gameId,
+                        )
+                    }
+                } catch (_: Exception) {
+                    // HLTB is best-effort; don't crash on failure
+                }
+            }
+        }
+        val displayInfo = displayInfoBase.copy(hltbStats = hltbStats)
 
         // Use composable state for values that change over time
         var isInstalledState by remember(libraryItem.appId) {
