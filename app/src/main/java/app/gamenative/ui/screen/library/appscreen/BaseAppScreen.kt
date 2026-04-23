@@ -905,6 +905,7 @@ abstract class BaseAppScreen {
         val hltbScope = rememberCoroutineScope()
         LaunchedEffect(displayInfoBase.name) {
             if (displayInfoBase.name.isNotBlank()) {
+                Timber.tag("HLTB").d("Fetching stats for '${displayInfoBase.name}'")
                 try {
                     val stats = app.gamenative.utils.HltbService.getStats(displayInfoBase.name)
                     if (stats != null) {
