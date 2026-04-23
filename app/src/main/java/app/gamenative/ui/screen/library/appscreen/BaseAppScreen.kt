@@ -898,29 +898,13 @@ abstract class BaseAppScreen {
         val displayInfoBase = getGameDisplayInfo(context, libraryItem)
         val appId = libraryItem.appId
 
-        // Fetch HLTB stats asynchronously
+        // Fetch HLTB stats asynchronously (best-effort)
         var hltbStats by remember(displayInfoBase.name) {
-            mutableStateOf<GameDisplayInfo.HltbStats?>(null)
+            mutableStateOf<app.gamenative.utils.HltbService.Stats?>(null)
         }
-        val hltbScope = rememberCoroutineScope()
         LaunchedEffect(displayInfoBase.name) {
-            if (displayInfoBase.name.isNotBlank()) {
-                Timber.tag("HLTB").d("Fetching stats for '${displayInfoBase.name}'")
-                try {
-                    val stats = app.gamenative.utils.HltbService.getStats(displayInfoBase.name)
-                    if (stats != null) {
-                        hltbStats = GameDisplayInfo.HltbStats(
-                            mainHours = stats.mainHours,
-                            mainPlusHours = stats.mainPlusHours,
-                            completeHours = stats.completeHours,
-                            allStylesHours = stats.allStylesHours,
-                            gameId = stats.gameId,
-                        )
-                    }
-                } catch (_: Exception) {
-                    // HLTB is best-effort; don't crash on failure
-                }
-            }
+            if (displayInfoBase.name.isNotBlank())
+                hltbStats = try { app.gamenative.utils.HltbService.getStats(displayInfoBase.name) } catch (_: Exception) { null }
         }
         val displayInfo = displayInfoBase.copy(hltbStats = hltbStats)
 

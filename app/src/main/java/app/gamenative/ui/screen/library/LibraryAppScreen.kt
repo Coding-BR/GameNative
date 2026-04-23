@@ -288,38 +288,12 @@ private fun PrimaryActionButton(
 }
 
 
-/**
- * HLTB stat card showing a completion tier with hours value.
- */
 @Composable
-private fun HltbStatCard(
-    label: String,
-    hours: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = if (hours == "--") "--" else "${hours}h",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-            )
+private fun HltbStatCard(label: String, hours: String, modifier: Modifier = Modifier) {
+    Surface(modifier, RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(if (hours == "--") "--" else "${hours}h", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
 }
@@ -1115,44 +1089,17 @@ internal fun AppScreenContent(
                 }
 
                 // HLTB (How Long To Beat) stats
-                val hltb = displayInfo.hltbStats
-                if (hltb != null) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.hltb_title),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        HltbStatCard(
-                            label = stringResource(R.string.hltb_main_story),
-                            hours = hltb.mainHours,
-                            modifier = Modifier.weight(1f),
-                        )
-                        HltbStatCard(
-                            label = stringResource(R.string.hltb_main_plus_extras),
-                            hours = hltb.mainPlusHours,
-                            modifier = Modifier.weight(1f),
-                        )
+                displayInfo.hltbStats?.let { hltb ->
+                    Spacer(Modifier.height(16.dp))
+                    Text(stringResource(R.string.hltb_title), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(bottom = 12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HltbStatCard(stringResource(R.string.hltb_main_story), hltb.mainHours, Modifier.weight(1f))
+                        HltbStatCard(stringResource(R.string.hltb_main_plus_extras), hltb.mainPlusHours, Modifier.weight(1f))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        HltbStatCard(
-                            label = stringResource(R.string.hltb_completionist),
-                            hours = hltb.completeHours,
-                            modifier = Modifier.weight(1f),
-                        )
-                        HltbStatCard(
-                            label = stringResource(R.string.hltb_all_styles),
-                            hours = hltb.allStylesHours,
-                            modifier = Modifier.weight(1f),
-                        )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HltbStatCard(stringResource(R.string.hltb_completionist), hltb.completeHours, Modifier.weight(1f))
+                        HltbStatCard(stringResource(R.string.hltb_all_styles), hltb.allStylesHours, Modifier.weight(1f))
                     }
                 }
             }
