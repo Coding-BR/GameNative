@@ -93,22 +93,25 @@ object HltbService {
             }.toString().toByteArray()
 
             val conn = URL("$BASE$SEARCH_PATH").openConnection() as HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
             conn.requestMethod = "POST"; conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Origin", BASE); conn.setRequestProperty("Referer", "$BASE/")
             conn.setRequestProperty("x-auth-token", a.token)
             conn.setRequestProperty("x-hp-key", a.hpKey); conn.setRequestProperty("x-hp-val", a.hpVal)
             conn.setRequestProperty("User-Agent", UA)
-            conn.outputStream.use { it.write(body) }
+            try {
+                conn.outputStream.use { it.write(body) }
 
-            if (conn.responseCode != 200) {
-                Timber.tag("HLTB").w("Search HTTP ${conn.responseCode} for '$name'")
-                auth = null; return@withContext null
-            }
+                if (conn.responseCode != 200) {
+                    Timber.tag("HLTB").w("Search HTTP ${conn.responseCode} for '$name'")
+                    auth = null; return@withContext null
+                }
 
-            val data = JSONObject(conn.inputStream.bufferedReader().readText()).optJSONArray("data")
-                ?: return@withContext null
-            if (data.length() == 0) return@withContext null
+                val data = JSONObject(conn.inputStream.bufferedReader().readText()).optJSONArray("data")
+                    ?: return@withContext null
+                if (data.length() == 0) return@withContext null
 
             // Pick best match (exact name first, then closest by edit distance)
             val norm = normalize(name)
@@ -121,29 +124,32 @@ object HltbService {
                 if (d == 0) break
             }
 
-            val g = best
-            Timber.tag("HLTB").i("'$name' → '${g.optString("game_name")}' main=${g.optLong("comp_main")}s")
-            Stats(
-                mainHours = secs(g.optLong("comp_main")),
-                mainPlusHours = secs(g.optLong("comp_plus")),
-                completeHours = secs(g.optLong("comp_100")),
-                allStylesHours = secs(g.optLong("comp_all")),
-                gameId = g.optInt("game_id", 0),
-            )
+                val g = best
+                Timber.tag("HLTB").i("'$name' → '${g.optString("game_name")}' main=${g.optLong("comp_main")}s")
+                Stats(
+                    mainHours = secs(g.optLong("comp_main")),
+                    mainPlusHours = secs(g.optLong("comp_plus")),
+                    completeHours = secs(g.optLong("comp_100")),
+                    allStylesHours = secs(g.optLong("comp_all")),
+                    gameId = g.optInt("game_id", 0),
+                )
+            } finally {
+                conn.disconnect()
+            }
         } catch (e: Exception) { Timber.tag("HLTB").e(e, "search '$name'"); null }
     }
 
     /** Public entry — cache-first, with one auth retry on failure. */
-    suspend fun getStats(name: String): Stats? {
-        if (name.isBlank()) return null
-        HltbCache.get(name)?.let { return it }
-        val a = auth ?: fetchAuth() ?: return null
+    suspend fun getStats(name: String): Stats? = withContext(Dispatchers.IO) {
+        if (name.isBlank()) return@withContext null
+        HltbCache.get(name)?.let { return@withContext it }
+        val a = auth ?: fetchAuth() ?: return@withContext null
         val stats = search(name, a) ?: run {
-            val fresh = fetchAuth() ?: return null
+            val fresh = fetchAuth() ?: return@withContext null
             search(name, fresh)
-        } ?: return null
+        } ?: return@withContext null
         HltbCache.put(name, stats)
-        return stats
+        stats
     }
 
     private fun secs(s: Long) = if (s <= 0) "--" else "%.1f".format(s / 3600.0)

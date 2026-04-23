@@ -904,7 +904,11 @@ abstract class BaseAppScreen {
         }
         LaunchedEffect(displayInfoBase.name) {
             if (displayInfoBase.name.isNotBlank())
-                hltbStats = try { app.gamenative.utils.HltbService.getStats(displayInfoBase.name) } catch (_: Exception) { null }
+                hltbStats = try {
+                    app.gamenative.utils.HltbService.getStats(displayInfoBase.name)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) { null }
         }
         val displayInfo = displayInfoBase.copy(hltbStats = hltbStats)
 
