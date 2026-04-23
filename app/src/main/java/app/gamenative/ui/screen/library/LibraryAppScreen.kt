@@ -289,11 +289,34 @@ private fun PrimaryActionButton(
 
 
 @Composable
-private fun HltbStatCard(label: String, hours: String, modifier: Modifier = Modifier) {
-    Surface(modifier, RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 2.dp) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (hours == "--") "--" else "${hours}h", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+private fun HltbHeroStrip(stats: app.gamenative.utils.HltbService.Stats) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        listOf(
+            stringResource(R.string.hltb_main_story) to stats.mainHours,
+            stringResource(R.string.hltb_main_plus_extras) to stats.mainPlusHours,
+            stringResource(R.string.hltb_completionist) to stats.completeHours,
+            stringResource(R.string.hltb_all_styles) to stats.allStylesHours,
+        ).forEach { (label, hours) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (hours == "--") "--" else "${hours}h",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -796,6 +819,12 @@ internal fun AppScreenContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // HLTB stats strip (above play bar)
+                    displayInfo.hltbStats?.let { hltb ->
+                        HltbHeroStrip(hltb)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     // Integrated action bar - overlaid on hero
                     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
                     Column(
@@ -1088,20 +1117,6 @@ internal fun AppScreenContent(
                     }
                 }
 
-                // HLTB (How Long To Beat) stats
-                displayInfo.hltbStats?.let { hltb ->
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.hltb_title), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(bottom = 12.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HltbStatCard(stringResource(R.string.hltb_main_story), hltb.mainHours, Modifier.weight(1f))
-                        HltbStatCard(stringResource(R.string.hltb_main_plus_extras), hltb.mainPlusHours, Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HltbStatCard(stringResource(R.string.hltb_completionist), hltb.completeHours, Modifier.weight(1f))
-                        HltbStatCard(stringResource(R.string.hltb_all_styles), hltb.allStylesHours, Modifier.weight(1f))
-                    }
-                }
             }
         }
 
