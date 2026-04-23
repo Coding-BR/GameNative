@@ -1,9 +1,9 @@
 package app.gamenative.ui.screen.library.components
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.utils.HltbService
+import timber.log.Timber
 
 @Composable
 fun HltbHeroStrip(stats: HltbService.Stats) {
@@ -62,18 +64,25 @@ fun HltbHeroStrip(stats: HltbService.Stats) {
             }
         }
         if (stats.gameId > 0) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                contentDescription = stringResource(R.string.hltb_view_on_hltb),
-                tint = Color.White.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .size(18.dp)
-                    .clickable {
+            IconButton(
+                onClick = {
+                    try {
                         context.startActivity(
                             Intent(Intent.ACTION_VIEW, Uri.parse("${HltbService.GAME_URL}${stats.gameId}"))
                         )
-                    },
-            )
+                    } catch (e: ActivityNotFoundException) {
+                        Timber.tag("HLTB").w(e, "No handler for HLTB game URL")
+                    }
+                },
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = stringResource(R.string.hltb_view_on_hltb),
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }

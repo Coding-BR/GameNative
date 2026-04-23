@@ -69,12 +69,8 @@ class HltbCacheTest {
     // ── TTL eviction ─────────────────────────────────────────────────────────
 
     @Test
-    fun get_returnsNullAfterTtlExpires() {
-        // Put with an artificially old timestamp by manipulating via put then expiring via reset trick:
-        // We can't set the stamp directly, so we verify via a fresh cache that
-        // a non-expired entry survives, and rely on the TTL constant being 12 h.
+    fun get_returnsEntryWithinTtl() {
         HltbCache.put("Celeste", sampleStats)
-        // Immediately after put the entry should be valid (well within 12-hour TTL)
         assertNotNull(HltbCache.get("Celeste"))
     }
 
@@ -82,16 +78,14 @@ class HltbCacheTest {
 
     @Test
     fun put_evictsOldestWhenCapReached() {
-        // Fill cache to MAX_ENTRIES
         repeat(HltbCache.MAX_ENTRIES) { i ->
             HltbCache.put("Game $i", sampleStats)
         }
-        // Verify an entry inside the cap exists
         assertNotNull(HltbCache.get("Game 0"))
 
-        // Adding one more entry should evict something — total should remain ≤ MAX_ENTRIES
         HltbCache.put("Overflow Game", sampleStats)
-        // The new entry must be present
+
+        assertNull(HltbCache.get("Game 0"))
         assertNotNull(HltbCache.get("Overflow Game"))
     }
 

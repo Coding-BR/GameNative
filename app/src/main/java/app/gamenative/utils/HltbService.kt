@@ -194,9 +194,15 @@ object HltbCache {
             val raw = PrefManager.hltbCache
             if (raw != "{}") {
                 val now = System.currentTimeMillis()
-                json.decodeFromString<Map<String, Entry>>(raw).forEach { (k, e) ->
-                    if (now - e.ts < TTL) { mem[k] = e.stats; stamps[k] = e.ts }
-                }
+                json.decodeFromString<Map<String, Entry>>(raw)
+                    .asSequence()
+                    .filter { (_, entry) -> now - entry.ts < TTL }
+                    .sortedByDescending { (_, entry) -> entry.ts }
+                    .take(MAX_ENTRIES)
+                    .forEach { (key, entry) ->
+                        mem[key] = entry.stats
+                        stamps[key] = entry.ts
+                    }
             }
         } catch (_: Exception) {
         } finally {
