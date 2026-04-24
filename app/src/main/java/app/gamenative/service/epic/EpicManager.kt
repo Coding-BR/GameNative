@@ -29,6 +29,11 @@ class EpicManager @Inject constructor(
 
     private val REFRESH_BATCH_SIZE = 10
 
+    // Deployment ID cache TTL — deployment IDs rarely change, but a periodic re-probe
+    // gives automatic recovery from any poisoned cache entry (stale negative, truncated
+    // value, etc.) without requiring manual intervention.
+    private val DEPLOYMENT_ID_CACHE_TTL_MS = 30L * 24 * 60 * 60 * 1000  // 30 days
+
     private val httpClient = Net.http
 
     private fun getCdnClient(): okhttp3.OkHttpClient {
@@ -952,7 +957,13 @@ class EpicManager @Inject constructor(
         val cacheFile = File(cacheDir, "$sanitized.txt")
 
         if (!forceRefresh && cacheFile.exists()) {
-            return@withContext cacheFile.readText().trim().takeIf { it.isNotEmpty() }
+            val cacheAgeMs = System.currentTimeMillis() - cacheFile.lastModified()
+            if (cacheAgeMs < DEPLOYMENT_ID_CACHE_TTL_MS) {
+                return@withContext cacheFile.readText().trim().takeIf { it.isNotEmpty() }
+            }
+            Timber.tag("Epic").d(
+                "fetchDeploymentId cache for $appName is stale (age=${cacheAgeMs}ms), refetching",
+            )
         }
 
         try {
@@ -999,8 +1010,11 @@ class EpicManager @Inject constructor(
             val deploymentId = try {
                 JSONObject(configStr).optString("deploymentId", "").takeIf { it.isNotEmpty() }
             } catch (e: Exception) {
+                // Malformed sidecar (transient Epic API hiccup or schema change).
+                // Do NOT persist a negative cache here — next launch will retry the parse
+                // rather than permanently treating this game as having no deployment id.
                 Timber.tag("Epic").w(e, "fetchDeploymentId: failed to parse sidecar.config for $appName")
-                null
+                return@withContext null
             }
 
             cacheFile.writeText(deploymentId ?: "")
