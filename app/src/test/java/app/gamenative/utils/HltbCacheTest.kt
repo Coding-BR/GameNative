@@ -36,20 +36,15 @@ class HltbCacheTest {
         unmockkObject(PrefManager)
     }
 
-    // ── basic get / put ──────────────────────────────────────────────────────
-
     @Test
-    fun get_returnsPreviouslyPutStats() {
-        HltbCache.put("Halo", sampleStats)
-        assertNotNull(HltbCache.get("Halo"))
-        assertEquals(sampleStats, HltbCache.get("Halo"))
-    }
+    fun get_returnsStoredStatsForNormalizedKeys() {
+        HltbCache.put("Hollow Knight!", sampleStats)
 
-    @Test
-    fun get_returnsCaseInsensitiveMatch() {
-        HltbCache.put("Hollow Knight", sampleStats)
-        assertNotNull(HltbCache.get("hollow knight"))
-        assertNotNull(HltbCache.get("HOLLOW KNIGHT"))
+        listOf("Hollow Knight!", "hollow knight", "HOLLOW KNIGHT", "Hollow Knight")
+            .forEach { key ->
+                assertNotNull(HltbCache.get(key))
+                assertEquals(sampleStats, HltbCache.get(key))
+            }
     }
 
     @Test
@@ -57,29 +52,10 @@ class HltbCacheTest {
         assertNull(HltbCache.get("Unknown Game"))
     }
 
-    // ── key normalisation ────────────────────────────────────────────────────
-
-    @Test
-    fun key_normalisesPunctuation() {
-        // "Elden Ring!" and "Elden Ring" should resolve to the same key
-        HltbCache.put("Elden Ring!", sampleStats)
-        assertNotNull(HltbCache.get("Elden Ring"))
-    }
-
-    // ── TTL eviction ─────────────────────────────────────────────────────────
-
-    @Test
-    fun get_returnsEntryWithinTtl() {
-        HltbCache.put("Celeste", sampleStats)
-        assertNotNull(HltbCache.get("Celeste"))
-    }
-
-    // ── MAX_ENTRIES cap ──────────────────────────────────────────────────────
-
     @Test
     fun put_evictsOldestWhenCapReached() {
-        repeat(HltbCache.MAX_ENTRIES) { i ->
-            HltbCache.put("Game $i", sampleStats)
+        repeat(HltbCache.MAX_ENTRIES) { index ->
+            HltbCache.put("Game $index", sampleStats)
         }
         assertNotNull(HltbCache.get("Game 0"))
 
@@ -89,8 +65,6 @@ class HltbCacheTest {
         assertNotNull(HltbCache.get("Overflow Game"))
     }
 
-    // ── reset ────────────────────────────────────────────────────────────────
-
     @Test
     fun reset_clearsAllEntries() {
         HltbCache.put("Halo", sampleStats)
@@ -98,4 +72,3 @@ class HltbCacheTest {
         assertNull(HltbCache.get("Halo"))
     }
 }
-

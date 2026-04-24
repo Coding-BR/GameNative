@@ -5,125 +5,59 @@ import org.junit.Test
 
 class HltbServiceTest {
 
-    // ── formatHours() ───────────────────────────────────────────────────────
-
     @Test
-    fun formatHours_zeroReturnsPlaceholder() {
-        assertEquals("--", HltbService.formatHours(0L))
+    fun formatHours_formatsExpectedCases() {
+        listOf(
+            0L to "--",
+            -3600L to "--",
+            3600L to "1.0",
+            5400L to "1.5",
+            3700L to "1.0",
+            360_000L to "100.0",
+        ).forEach { (seconds, expected) ->
+            assertEquals(expected, HltbService.formatHours(seconds))
+        }
     }
 
     @Test
-    fun formatHours_negativeReturnsPlaceholder() {
-        assertEquals("--", HltbService.formatHours(-3600L))
+    fun normalize_normalizesExpectedCases() {
+        listOf(
+            "HALO" to "halo",
+            "The Witcher 3" to "the witcher 3",
+            "A   B   C" to "a b c",
+            "Hollow Knight!" to "hollow knight",
+            "  Celeste  " to "celeste",
+        ).forEach { (input, expected) ->
+            assertEquals(expected, HltbService.normalize(input))
+        }
     }
 
     @Test
-    fun formatHours_oneHourFormatsCorrectly() {
-        assertEquals("1.0", HltbService.formatHours(3600L))
-    }
-
-    @Test
-    fun formatHours_ninetyMinutesFormatsCorrectly() {
-        assertEquals("1.5", HltbService.formatHours(5400L))
-    }
-
-    @Test
-    fun formatHours_fractionalHourRoundsToOneDecimal() {
-        // 3700s ≈ 1.027… → "1.0"
-        assertEquals("1.0", HltbService.formatHours(3700L))
-    }
-
-    @Test
-    fun formatHours_largeValueFormatsCorrectly() {
-        // 100 hours
-        assertEquals("100.0", HltbService.formatHours(360_000L))
-    }
-
-    // ── normalize() ─────────────────────────────────────────────────────────
-
-    @Test
-    fun normalize_lowercasesInput() {
-        assertEquals("halo", HltbService.normalize("HALO"))
-    }
-
-    @Test
-    fun normalize_replacesSpecialCharsWithSpace() {
-        assertEquals("the witcher 3", HltbService.normalize("The Witcher 3"))
-    }
-
-    @Test
-    fun normalize_collapsesMultipleSpaces() {
-        assertEquals("a b c", HltbService.normalize("A   B   C"))
-    }
-
-    @Test
-    fun normalize_stripsPunctuation() {
-        assertEquals("hollow knight", HltbService.normalize("Hollow Knight!"))
-    }
-
-    @Test
-    fun normalize_trimsLeadingAndTrailingSpaces() {
-        assertEquals("celeste", HltbService.normalize("  Celeste  "))
-    }
-
-    // ── levenshtein() ────────────────────────────────────────────────────────
-
-    @Test
-    fun levenshtein_identicalStringsReturnZero() {
-        assertEquals(0, HltbService.levenshtein("halo", "halo"))
-    }
-
-    @Test
-    fun levenshtein_emptyAndNonEmptyReturnsLength() {
-        assertEquals(4, HltbService.levenshtein("", "halo"))
-        assertEquals(4, HltbService.levenshtein("halo", ""))
-    }
-
-    @Test
-    fun levenshtein_singleSubstitution() {
-        assertEquals(1, HltbService.levenshtein("halo", "hale"))
-    }
-
-    @Test
-    fun levenshtein_singleInsertion() {
-        assertEquals(1, HltbService.levenshtein("halo", "halos"))
-    }
-
-    @Test
-    fun levenshtein_singleDeletion() {
-        assertEquals(1, HltbService.levenshtein("halos", "halo"))
-    }
-
-    @Test
-    fun levenshtein_completelyDifferentStrings() {
-        assertEquals(4, HltbService.levenshtein("halo", "doom"))
+    fun levenshtein_handlesCommonCases() {
+        listOf(
+            Triple("halo", "halo", 0),
+            Triple("", "halo", 4),
+            Triple("halo", "", 4),
+            Triple("halo", "hale", 1),
+            Triple("halo", "halos", 1),
+            Triple("halos", "halo", 1),
+            Triple("halo", "doom", 4),
+        ).forEach { (left, right, expected) ->
+            assertEquals(expected, HltbService.levenshtein(left, right))
+        }
     }
 
     @Test
     fun levenshtein_isSymmetric() {
-        val a = "witcher"
-        val b = "alchemy"
-        assertEquals(HltbService.levenshtein(a, b), HltbService.levenshtein(b, a))
-    }
-
-    // ── normalize + levenshtein integration ──────────────────────────────────
-
-    @Test
-    fun normalizeAndLevenshtein_exactMatchAfterNormalizeIsZero() {
-        val dist = HltbService.levenshtein(
-            HltbService.normalize("The Witcher 3: Wild Hunt"),
-            HltbService.normalize("The Witcher 3: Wild Hunt"),
-        )
-        assertEquals(0, dist)
+        val left = "witcher"
+        val right = "alchemy"
+        assertEquals(HltbService.levenshtein(left, right), HltbService.levenshtein(right, left))
     }
 
     @Test
-    fun normalizeAndLevenshtein_closeMatchHasSmallDistance() {
-        // "Hollow Knight" vs "Hollow Knight" with trailing punctuation stripped
-        val dist = HltbService.levenshtein(
-            HltbService.normalize("Hollow Knight"),
-            HltbService.normalize("Hollow Knight!"),
-        )
-        assertEquals(0, dist)
+    fun normalizedEquivalentTitlesHaveZeroDistance() {
+        val left = HltbService.normalize("The Witcher 3: Wild Hunt")
+        val right = HltbService.normalize("The Witcher 3: Wild Hunt!")
+        assertEquals(0, HltbService.levenshtein(left, right))
     }
 }

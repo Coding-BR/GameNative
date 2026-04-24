@@ -9,6 +9,7 @@ import io.mockk.unmockkObject
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,31 +46,9 @@ class HltbServiceIntegrationTest {
     @Test
     fun getStats_fetchesAndFormatsBestStubbedMatch() = runBlocking {
         enqueueAuthResponse()
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """
-                {
-                  "data": [
-                    {
-                      "game_name": "Halo Wars",
-                      "comp_main": 7200,
-                      "comp_plus": 10800,
-                      "comp_100": 14400,
-                      "comp_all": 18000,
-                      "game_id": 2
-                    },
-                    {
-                      "game_name": "Halo",
-                      "comp_main": 3600,
-                      "comp_plus": 5400,
-                      "comp_100": 7200,
-                      "comp_all": 9000,
-                      "game_id": 1
-                    }
-                  ]
-                }
-                """.trimIndent(),
-            ),
+        enqueueSearchResponse(
+            game("Halo Wars", 7200, 10800, 14400, 18000, 2),
+            game("Halo", 3600, 5400, 7200, 9000, 1),
         )
 
         val stats = HltbService.getStats("Halo")
@@ -101,24 +80,7 @@ class HltbServiceIntegrationTest {
     @Test
     fun getStats_usesCacheOnRepeatedCalls() = runBlocking {
         enqueueAuthResponse()
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """
-                {
-                  "data": [
-                    {
-                      "game_name": "Celeste",
-                      "comp_main": 14400,
-                      "comp_plus": 21600,
-                      "comp_100": 28800,
-                      "comp_all": 32400,
-                      "game_id": 99
-                    }
-                  ]
-                }
-                """.trimIndent(),
-            ),
-        )
+        enqueueSearchResponse(game("Celeste", 14400, 21600, 28800, 32400, 99))
 
         val first = HltbService.getStats("Celeste")
         val requestCountAfterFirstCall = server.requestCount
@@ -132,24 +94,7 @@ class HltbServiceIntegrationTest {
     @Test
     fun getStats_returnsNullForZeroValueStubbedMatch() = runBlocking {
         enqueueAuthResponse()
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """
-                {
-                  "data": [
-                    {
-                      "game_name": "Empty Game",
-                      "comp_main": 0,
-                      "comp_plus": 0,
-                      "comp_100": 0,
-                      "comp_all": 0,
-                      "game_id": 404
-                    }
-                  ]
-                }
-                """.trimIndent(),
-            ),
-        )
+        enqueueSearchResponse(game("Empty Game", 0, 0, 0, 0, 404))
 
         assertNull(HltbService.getStats("Empty Game"))
         assertEquals(2, server.requestCount)
@@ -158,14 +103,35 @@ class HltbServiceIntegrationTest {
     private fun enqueueAuthResponse() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """
-                {
-                  "token": "token-123",
-                  "session_key": "hp-key",
-                  "session_val": "hp-val"
-                }
-                """.trimIndent(),
+                JSONObject()
+                    .put("token", "token-123")
+                    .put("session_key", "hp-key")
+                    .put("session_val", "hp-val")
+                    .toString(),
             ),
         )
     }
+
+    private fun enqueueSearchResponse(vararg games: JSONObject) {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                JSONObject().put("data", JSONArray(games.asList())).toString(),
+            ),
+        )
+    }
+
+    private fun game(
+        name: String,
+        main: Long,
+        plus: Long,
+        complete: Long,
+        allStyles: Long,
+        id: Int,
+    ) = JSONObject()
+        .put("game_name", name)
+        .put("comp_main", main)
+        .put("comp_plus", plus)
+        .put("comp_100", complete)
+        .put("comp_all", allStyles)
+        .put("game_id", id)
 }
