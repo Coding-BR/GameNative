@@ -13,6 +13,9 @@ import timber.log.Timber
 import java.net.HttpURLConnection
 import java.net.URL
 
+private fun normalizedKey(input: String) =
+    input.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), " ").replace(Regex("\\s+"), " ").trim()
+
 /**
  * Fetches HowLongToBeat completion time stats for a game.
  *
@@ -25,8 +28,9 @@ import java.net.URL
  */
 object HltbService {
 
-    private const val BASE = "https://howlongtobeat.com"
+    private const val DEFAULT_API_BASE_URL = "https://howlongtobeat.com"
     private const val SEARCH_PATH = "/api/find"
+    private const val INIT_PATH = "$SEARCH_PATH/init"
     private const val UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
 
@@ -44,7 +48,8 @@ object HltbService {
 
     private data class Auth(val token: String, val hpKey: String, val hpVal: String)
 
-    private var auth: Auth? = null
+    @Volatile private var auth: Auth? = null
+    @Volatile private var apiBaseUrl = DEFAULT_API_BASE_URL
 
     private val httpClient = okhttp3.OkHttpClient.Builder()
         .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
@@ -55,8 +60,8 @@ object HltbService {
     /** Fetch auth tokens from the HLTB init endpoint. */
     private suspend fun fetchAuth(): Auth? = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder().url("$BASE$SEARCH_PATH/init?t=${System.currentTimeMillis()}")
-                .header("Origin", BASE).header("Referer", "$BASE/").header("User-Agent", UA).build()
+            val req = Request.Builder().url("$apiBaseUrl$INIT_PATH?t=${System.currentTimeMillis()}")
+                .header("Origin", apiBaseUrl).header("Referer", "$apiBaseUrl/").header("User-Agent", UA).build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@withContext null
                 val d = JSONObject(resp.body?.string() ?: return@withContext null)
@@ -95,12 +100,12 @@ object HltbService {
                 put(a.hpKey, a.hpVal)
             }.toString().toByteArray()
 
-            val conn = URL("$BASE$SEARCH_PATH").openConnection() as HttpURLConnection
+            val conn = URL("$apiBaseUrl$SEARCH_PATH").openConnection() as HttpURLConnection
             conn.connectTimeout = 15_000
             conn.readTimeout = 30_000
             conn.requestMethod = "POST"; conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Origin", BASE); conn.setRequestProperty("Referer", "$BASE/")
+            conn.setRequestProperty("Origin", apiBaseUrl); conn.setRequestProperty("Referer", "$apiBaseUrl/")
             conn.setRequestProperty("x-auth-token", a.token)
             conn.setRequestProperty("x-hp-key", a.hpKey); conn.setRequestProperty("x-hp-val", a.hpVal)
             conn.setRequestProperty("User-Agent", UA)
@@ -117,19 +122,20 @@ object HltbService {
                 if (data.length() == 0) return@withContext null
 
                 // Pick best match (exact name first, then closest by edit distance)
-                val norm = normalize(name)
+                val normalizedName = normalize(name)
                 var bestMatch = data.getJSONObject(0)
-                var bestDist = Int.MAX_VALUE
-                for (i in 0 until data.length()) {
-                    val candidate = data.getJSONObject(i)
-                    val dist = levenshtein(norm, normalize(candidate.optString("game_name")))
-                    if (dist < bestDist) { bestDist = dist; bestMatch = candidate }
-                    if (dist == 0) break
+                var bestDistance = Int.MAX_VALUE
+                for (index in 0 until data.length()) {
+                    val candidate = data.getJSONObject(index)
+                    val candidateName = candidate.optString("game_name")
+                    val distance = levenshtein(normalizedName, normalize(candidateName))
+                    if (distance < bestDistance) { bestDistance = distance; bestMatch = candidate }
+                    if (distance == 0) break
                 }
 
                 // Reject poor fuzzy matches — avoids surfacing unrelated stub entries
-                val distanceThreshold = maxOf(3, norm.length / 2)
-                if (bestDist > distanceThreshold) return@withContext null
+                val distanceThreshold = maxOf(3, normalizedName.length / 2)
+                if (bestDistance > distanceThreshold) return@withContext null
 
                 // Skip entries with no completion data — don't poison the cache with placeholders
                 if (listOf("comp_main", "comp_plus", "comp_100", "comp_all")
@@ -137,10 +143,10 @@ object HltbService {
 
                 Timber.tag("HLTB").i("'$name' → '${bestMatch.optString("game_name")}' main=${bestMatch.optLong("comp_main")}s")
                 Stats(
-                    mainHours = secs(bestMatch.optLong("comp_main")),
-                    mainPlusHours = secs(bestMatch.optLong("comp_plus")),
-                    completeHours = secs(bestMatch.optLong("comp_100")),
-                    allStylesHours = secs(bestMatch.optLong("comp_all")),
+                    mainHours = formatHours(bestMatch.optLong("comp_main")),
+                    mainPlusHours = formatHours(bestMatch.optLong("comp_plus")),
+                    completeHours = formatHours(bestMatch.optLong("comp_100")),
+                    allStylesHours = formatHours(bestMatch.optLong("comp_all")),
                     gameId = bestMatch.optInt("game_id", 0),
                 )
             } finally {
@@ -153,26 +159,42 @@ object HltbService {
     suspend fun getStats(name: String): Stats? = withContext(Dispatchers.IO) {
         if (name.isBlank()) return@withContext null
         HltbCache.get(name)?.let { return@withContext it }
-        val a = auth ?: fetchAuth() ?: return@withContext null
-        val stats = search(name, a) ?: run {
-            val fresh = fetchAuth() ?: return@withContext null
-            search(name, fresh)
+        val cachedAuth = auth ?: fetchAuth() ?: return@withContext null
+        val firstAttempt = search(name, cachedAuth)
+        val stats = firstAttempt ?: run {
+            if (auth != null) return@withContext null
+            val refreshedAuth = fetchAuth() ?: return@withContext null
+            search(name, refreshedAuth)
         } ?: return@withContext null
         HltbCache.put(name, stats)
         stats
     }
 
-    internal fun secs(s: Long) = if (s <= 0) "--" else "%.1f".format(s / 3600.0)
-    internal fun normalize(s: String) =
-        s.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), " ").replace(Regex("\\s+"), " ").trim()
-    internal fun levenshtein(a: String, b: String): Int {
-        if (a == b) return 0
-        val dp = Array(a.length + 1) { IntArray(b.length + 1) }
-        for (i in 0..a.length) dp[i][0] = i
-        for (j in 0..b.length) dp[0][j] = j
-        for (i in 1..a.length) for (j in 1..b.length)
-            dp[i][j] = minOf(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+(if (a[i-1]==b[j-1]) 0 else 1))
-        return dp[a.length][b.length]
+    internal fun formatHours(seconds: Long) = if (seconds <= 0) "--" else "%.1f".format(seconds / 3600.0)
+    internal fun normalize(input: String) = normalizedKey(input)
+    internal fun levenshtein(left: String, right: String): Int {
+        if (left == right) return 0
+        val dp = Array(left.length + 1) { IntArray(right.length + 1) }
+        for (leftIndex in 0..left.length) dp[leftIndex][0] = leftIndex
+        for (rightIndex in 0..right.length) dp[0][rightIndex] = rightIndex
+        for (leftIndex in 1..left.length) for (rightIndex in 1..right.length)
+            dp[leftIndex][rightIndex] = minOf(
+                dp[leftIndex - 1][rightIndex] + 1,
+                dp[leftIndex][rightIndex - 1] + 1,
+                dp[leftIndex - 1][rightIndex - 1] +
+                    (if (left[leftIndex - 1] == right[rightIndex - 1]) 0 else 1),
+            )
+        return dp[left.length][right.length]
+    }
+
+    internal fun setApiBaseUrlForTesting(baseUrl: String) {
+        apiBaseUrl = baseUrl.trimEnd('/')
+        auth = null
+    }
+
+    internal fun resetForTesting() {
+        apiBaseUrl = DEFAULT_API_BASE_URL
+        auth = null
     }
 }
 
@@ -240,8 +262,7 @@ object HltbCache {
         save()
     }
 
-    internal fun key(s: String) =
-        s.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), " ").replace(Regex("\\s+"), " ").trim()
+    internal fun key(name: String) = normalizedKey(name)
 
     /** Reset state — for testing only. */
     @Synchronized

@@ -1,46 +1,42 @@
 package app.gamenative.utils
 
-import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotNull
-import org.junit.Before
 import org.junit.Test
 
 class HltbServiceTest {
 
-    // ── secs() ──────────────────────────────────────────────────────────────
+    // ── formatHours() ───────────────────────────────────────────────────────
 
     @Test
-    fun secs_zeroReturnsPlaceholder() {
-        assertEquals("--", HltbService.secs(0L))
+    fun formatHours_zeroReturnsPlaceholder() {
+        assertEquals("--", HltbService.formatHours(0L))
     }
 
     @Test
-    fun secs_negativeReturnsPlaceholder() {
-        assertEquals("--", HltbService.secs(-3600L))
+    fun formatHours_negativeReturnsPlaceholder() {
+        assertEquals("--", HltbService.formatHours(-3600L))
     }
 
     @Test
-    fun secs_oneHourFormatsCorrectly() {
-        assertEquals("1.0", HltbService.secs(3600L))
+    fun formatHours_oneHourFormatsCorrectly() {
+        assertEquals("1.0", HltbService.formatHours(3600L))
     }
 
     @Test
-    fun secs_ninetyMinutesFormatsCorrectly() {
-        assertEquals("1.5", HltbService.secs(5400L))
+    fun formatHours_ninetyMinutesFormatsCorrectly() {
+        assertEquals("1.5", HltbService.formatHours(5400L))
     }
 
     @Test
-    fun secs_fractionalHourRoundsToOneDecimal() {
+    fun formatHours_fractionalHourRoundsToOneDecimal() {
         // 3700s ≈ 1.027… → "1.0"
-        assertEquals("1.0", HltbService.secs(3700L))
+        assertEquals("1.0", HltbService.formatHours(3700L))
     }
 
     @Test
-    fun secs_largeValueFormatsCorrectly() {
+    fun formatHours_largeValueFormatsCorrectly() {
         // 100 hours
-        assertEquals("100.0", HltbService.secs(360_000L))
+        assertEquals("100.0", HltbService.formatHours(360_000L))
     }
 
     // ── normalize() ─────────────────────────────────────────────────────────
