@@ -4,8 +4,6 @@ import android.content.Context
 import com.winlator.container.Container
 import com.winlator.core.WineRegistryEditor
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -20,9 +18,8 @@ import timber.log.Timber
  *
  * Install flow:
  *  1. Fetch the latest overlay manifest from Epic's CDN.
- *  2. Download and install overlay files into the Wine prefix.
- *  3. Replace upstream overlay DLLs with Wine-compatible stubs so games do not crash.
- *  4. Write the overlay install path to the Wine registry (HKCU\SOFTWARE\Epic Games\EOS\OverlayPath).
+ *  2. Download and install overlay files into the Wine prefix (as-is, no DLL modification).
+ *  3. Write the overlay install path to the Wine registry (HKCU\SOFTWARE\Epic Games\EOS\OverlayPath).
  */
 @Singleton
 class EpicOverlayManager @Inject constructor(
@@ -54,19 +51,8 @@ class EpicOverlayManager @Inject constructor(
 
         // ── Identification ────────────────────────────────────────────────────────
         // Presence of this file signals that the overlay is installed.
+        // Mirrors legendary/core.py Core.is_overlay_install().
         const val OVERLAY_MARKER_FILE = "EOSOVH-Win64-Shipping.dll"
-
-        // These upstream Windows DLLs are replaced with Wine-compatible stubs so that
-        // the graphical overlay layer does not cause crashes inside Wine.
-        // The EOS SDK authentication path does not depend on the graphical renderer,
-        // so replacing these stubs still allows online play.
-        val OVERLAY_DLLS_TO_STUB = listOf(
-            "EOSOVH-Win64-Shipping.dll",
-            "EOSOVH-Win32-Shipping.dll",
-        )
-
-        // Backup suffix – originals are saved as <name>.orig so they can be restored.
-        const val BACKUP_SUFFIX = ".orig"
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -126,10 +112,10 @@ class EpicOverlayManager @Inject constructor(
                 )
             }
 
-            // Replace incompatible DLLs with stubs so the overlay does not crash in Wine
-            replaceIncompatibleDlls(overlayDir)
-
-            // Update registry to point to the overlay path
+            // Update registry to point to the overlay path.
+            // The EOS SDK in games reads this to locate the overlay; if the
+            // overlay DLLs fail to load under Wine the SDK degrades gracefully
+            // (no HUD) while keeping auth/online features working.
             writeRegistryPath(container, OVERLAY_WIN_PATH)
 
             Timber.tag("EOSOverlay").i("EOS overlay installation complete")
@@ -176,43 +162,6 @@ class EpicOverlayManager @Inject constructor(
         File(container.rootDir, ".wine/$OVERLAY_WINE_RELATIVE_PATH")
 
     /**
-     * Replace upstream Windows overlay DLLs with Wine-compatible stubs.
-     *
-     * Originals are backed up as `<filename>.orig`.  If a compatible DLL asset
-     * is bundled into the app it should be copied here instead of writing an
-     * empty stub – see the TODO below.
-     *
-     * Background: the graphical EOS overlay renderer DLLs are x86/x64 PE images
-     * that may crash or cause hangs when Wine tries to initialise them on an ARM
-     * host.  Replacing them with minimal stub DLLs prevents the crash while
-     * still allowing the EOS SDK to authenticate and provide online features.
-     *
-     * Source: inspired by Legendary's eos.py and Heroic's overlay handling.
-     */
-    private fun replaceIncompatibleDlls(overlayDir: File) {
-        for (dllName in OVERLAY_DLLS_TO_STUB) {
-            val original = File(overlayDir, dllName)
-            if (!original.exists()) continue
-
-            // Back up the original before replacing
-            val backup = File(overlayDir, "$dllName$BACKUP_SUFFIX")
-            if (!backup.exists()) {
-                Files.copy(original.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                Timber.tag("EOSOverlay").d("Backed up $dllName → $dllName$BACKUP_SUFFIX")
-            }
-
-            // TODO: Copy a compatible ARM64/Wine-compatible stub from bundled assets:
-            //   context.assets.open("eos_overlay_stubs/$dllName").use { input ->
-            //       Files.copy(input, original.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            //   }
-            // Until compatible stubs are available, write a minimal valid PE stub
-            // (the MZ header only) so the DLL is present but does nothing.
-            original.writeBytes(MINIMAL_PE_STUB)
-            Timber.tag("EOSOverlay").d("Replaced $dllName with minimal stub")
-        }
-    }
-
-    /**
      * Write the EOS overlay path to HKCU\SOFTWARE\Epic Games\EOS\OverlayPath in
      * [container]'s Wine user.reg.
      *
@@ -243,33 +192,5 @@ class EpicOverlayManager @Inject constructor(
             editor.setStringValue(EOS_OVERLAY_REG_KEY, EOS_OVERLAY_REG_VALUE, "")
         }
         Timber.tag("EOSOverlay").d("Removed HKCU\\$EOS_OVERLAY_REG_KEY\\$EOS_OVERLAY_REG_VALUE")
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Constants
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Minimal valid MZ/PE stub – 64 bytes (MZ header only with a self-referencing
-     * PE offset that points past the end of the file, causing Windows/Wine to
-     * reject the DLL gracefully rather than crashing on a missing export).
-     */
-    private val MINIMAL_PE_STUB: ByteArray by lazy {
-        byteArrayOf(
-            // MZ header signature
-            0x4D, 0x5A,
-            // Bytes on last page, pages in file (zero for stub)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // Relocations, header paragraphs, min/max alloc (all zero)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // e_lfanew: PE offset beyond file length → load fails gracefully
-            0x40, 0x00, 0x00, 0x00,
-        ).map { it.toByte() }.toByteArray()
     }
 }

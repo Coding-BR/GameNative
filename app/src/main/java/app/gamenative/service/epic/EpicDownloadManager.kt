@@ -22,6 +22,8 @@ import java.util.zip.Inflater
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -423,13 +425,16 @@ class EpicDownloadManager @Inject constructor(
                 downloadingAppIds = java.util.concurrent.CopyOnWriteArrayList(),
             )
 
+            val parallelDownloads = PrefManager.downloadSpeed.coerceAtLeast(1)
+            val downloadHttpClient = Net.httpForParallelDownloads(parallelDownloads)
+
             var downloadedChunks = 0
             val totalChunks = chunks.size
 
-            chunks.chunked(MAX_PARALLEL_DOWNLOADS).forEach { batch ->
+            chunks.chunked(parallelDownloads).forEach { batch ->
                 val results = batch.map { chunk ->
                     async {
-                        downloadChunkWithRetry(chunk, chunkCacheDir, chunkDir, cdnUrls, dummyDownloadInfo)
+                        downloadChunkWithRetry(chunk, chunkCacheDir, chunkDir, cdnUrls, dummyDownloadInfo, downloadHttpClient)
                     }
                 }.awaitAll()
 
