@@ -1357,8 +1357,16 @@ class GOGDownloadManager @Inject constructor(
             val chunkFile = File(chunkCacheDir, "$chunkMd5.chunk")
             val tempChunkFile = File(chunkCacheDir, "$chunkMd5.chunk.part")
 
-            if (tempChunkFile.exists()) {
-                tempChunkFile.delete()
+            // Skip if already downloaded and verified
+            if (chunkFile.exists()) {
+                val existingMd5 = calculateMd5(chunkFile.readBytes())
+                if (existingMd5 == chunkMd5) {
+                    Timber.tag("GOG").d("Chunk $chunkMd5 already exists and verified, skipping")
+                    return@withContext Result.success(chunkFile)
+                } else {
+                    Timber.tag("GOG").w("Chunk $chunkMd5 exists but failed verification, re-downloading")
+                    chunkFile.delete()
+                }
             }
 
             // Download compressed chunk (redact query params to avoid token leakage in logs)
