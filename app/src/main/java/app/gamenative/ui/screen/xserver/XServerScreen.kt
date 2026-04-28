@@ -38,6 +38,8 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,9 +58,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.gamenative.R
 import app.gamenative.ui.util.SnackbarManager
+import app.gamenative.ui.util.applyScreenEffectsConfig
+import app.gamenative.ui.util.loadScreenEffectsConfig
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -416,6 +421,9 @@ fun XServerScreen(
     var currentGestureConfig by remember {
         mutableStateOf(app.gamenative.data.TouchGestureConfig.fromJson(container.getGestureConfig()))
     }
+    val clickHighlightPoints = remember { mutableStateListOf<app.gamenative.ui.component.HighlightPoint>() }
+    var debugGestureName by remember { mutableStateOf("") }
+    var debugGestureKey by remember { mutableIntStateOf(0) }
     var keyboardRequestedFromOverlay by remember { mutableStateOf(false) }
     var showQuickMenu by remember { mutableStateOf(false) }
     var quickMenuToolsVisible by remember { mutableStateOf(false) }
@@ -488,6 +496,12 @@ fun XServerScreen(
         performanceHudConfig = config
         persistPerformanceHudConfig(config)
         performanceHudView?.setConfig(config)
+    }
+
+    LaunchedEffect(xServerView?.renderer) {
+        xServerView?.renderer?.let { renderer ->
+            applyScreenEffectsConfig(renderer, loadScreenEffectsConfig(container))
+        }
     }
 
     fun restorePerformanceHudPosition() {
@@ -867,33 +881,36 @@ fun XServerScreen(
         }
     }
 
+    // Shows the soft keyboard, anchored to [anchor]. Handles the Android 12+
+    // post-delay quirk and routes input to the external display IME when needed.
+    val showSoftKeyboard: (View, String) -> Unit = { anchor, analyticsEvent ->
+        anchor.post {
+            if (anchor.windowToken != null) {
+                val show = {
+                    if (PrefManager.usageAnalyticsEnabled) PostHog.capture(event = analyticsEvent)
+                    val isExternalDisplaySession =
+                        (anchor.display?.displayId ?: Display.DEFAULT_DISPLAY) != Display.DEFAULT_DISPLAY
+
+                    if (isExternalDisplaySession) {
+                        imeInputReceiver?.showKeyboard() ?: imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                    } else {
+                        imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                    }
+                }
+                if (Build.VERSION.SDK_INT > 29) {
+                    anchor.postDelayed({ show() }, 500)  // Pixel/Android-12+ quirk
+                } else {
+                    show()
+                }
+            }
+        }
+    }
+
     val onQuickMenuItemSelected: (Int) -> Boolean = { itemId ->
         when (itemId) {
             QuickMenuAction.KEYBOARD -> {
                 keyboardRequestedFromOverlay = true
-                val anchor = view // use the same composable root view
-                val c = if (Build.VERSION.SDK_INT >= 30)
-                    anchor.windowInsetsController else null
-
-                anchor.post {
-                    if (anchor.windowToken == null) return@post
-                    val show = {
-                        if (PrefManager.usageAnalyticsEnabled) PostHog.capture(event = "onscreen_keyboard_enabled")
-                        val isExternalDisplaySession =
-                            (anchor.display?.displayId ?: Display.DEFAULT_DISPLAY) != Display.DEFAULT_DISPLAY
-
-                        if (isExternalDisplaySession) {
-                            imeInputReceiver?.showKeyboard() ?: imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                        } else {
-                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                        }
-                    }
-                    if (Build.VERSION.SDK_INT > 29 && c != null) {
-                        anchor.postDelayed({ show() }, 500)  // Pixel/Android-12+ quirk
-                    } else {
-                        show()
-                    }
-                }
+                showSoftKeyboard(view, "onscreen_keyboard_enabled")
                 true
             }
 
@@ -1512,6 +1529,50 @@ fun XServerScreen(
                 frameLayout.addView(PluviaApp.touchpadView)
                 PluviaApp.touchpadView?.setMoveCursorToTouchpoint(PrefManager.getBoolean("move_cursor_to_touchpoint", false))
 
+                // Wire keyboard toggle callback for gesture "Show Keyboard" action.
+                // Mirrors the QuickMenuAction.KEYBOARD external-display routing
+                // (uses imeInputReceiver on external displays) but skips the
+                // 500ms post-delay used by the menu path — a gesture is already
+                // a direct touch interaction and should respond immediately.
+                PluviaApp.touchpadView?.setShowKeyboardCallback {
+                    val anchor = PluviaApp.touchpadView ?: return@setShowKeyboardCallback
+                    anchor.post {
+                        if (anchor.windowToken == null) return@post
+                        val isExternalDisplaySession =
+                            (anchor.display?.displayId ?: android.view.Display.DEFAULT_DISPLAY) != android.view.Display.DEFAULT_DISPLAY
+                        if (isExternalDisplaySession) {
+                            imeInputReceiver?.showKeyboard()
+                                ?: imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                        } else {
+                            imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                        }
+                    }
+                }
+
+                // Wire click highlight + gesture debug listener
+                PluviaApp.touchpadView?.setClickHighlightListener(object : com.winlator.widget.TouchpadView.ClickHighlightListener {
+                    override fun onClickAt(screenX: Float, screenY: Float) {
+                        PluviaApp.touchpadView?.post {
+                            if (currentGestureConfig.showClickHighlight) {
+                                clickHighlightPoints.add(
+                                    app.gamenative.ui.component.HighlightPoint(
+                                        screenX, screenY,
+                                        androidx.compose.animation.core.Animatable(0.5f),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                    override fun onGestureTriggered(gestureName: String) {
+                        PluviaApp.touchpadView?.post {
+                            if (currentGestureConfig.showGestureDebugOverlay) {
+                                debugGestureName = gestureName
+                                debugGestureKey++
+                            }
+                        }
+                    }
+                })
+
                 // Add invisible IME receiver to capture system keyboard input when keyboard is on external display
                 val imeDisplayContext = context.display?.let { display ->
                     context.createDisplayContext(display)
@@ -1868,7 +1929,14 @@ fun XServerScreen(
                     Timber.d("=== Profile Loading Complete ===")
                     setProfile(targetProfile)
 
-                    physicalControllerHandler = PhysicalControllerHandler(targetProfile, xServerView.getxServer(), gameBack)
+                    physicalControllerHandler = PhysicalControllerHandler(
+                        targetProfile,
+                        xServerView.getxServer(),
+                        gameBack,
+                        onShowKeyboard = {
+                            PluviaApp.inputControlsView?.triggerShowKeyboard()
+                        },
+                    )
 
                     // Store profile for auto-show logic
                     loadedProfile = targetProfile
@@ -1882,6 +1950,11 @@ fun XServerScreen(
                 setContainerShooterMode(container.isShooterMode)
             }
             PluviaApp.inputControlsView = icView
+
+            // Wire SHOW_KEYBOARD binding callback for overlay control buttons
+            icView.setShowKeyboardCallback {
+                showSoftKeyboard(icView, "onscreen_keyboard_enabled_from_binding")
+            }
 
             xServerView.getxServer().winHandler.setInputControlsView(PluviaApp.inputControlsView)
 
@@ -2054,6 +2127,37 @@ fun XServerScreen(
     )
         }
 
+        // Click highlight overlay (gesture overhaul)
+        if (currentGestureConfig.showClickHighlight && clickHighlightPoints.isNotEmpty()) {
+            app.gamenative.ui.component.ClickHighlightOverlay(points = clickHighlightPoints)
+        }
+
+        // Debug gesture name overlay (gesture overhaul)
+        if (currentGestureConfig.showGestureDebugOverlay && debugGestureName.isNotEmpty()) {
+            LaunchedEffect(debugGestureKey) {
+                kotlinx.coroutines.delay(1200)
+                debugGestureName = ""
+            }
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 48.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                androidx.compose.material3.Text(
+                    text = debugGestureName,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 18.sp,
+                    modifier = Modifier
+                        .background(
+                            androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
+
         // Floating toolbar for edit mode (always visible in edit mode)
         if (isEditMode && areControlsVisible) {
             EditModeToolbar(
@@ -2171,6 +2275,7 @@ fun XServerScreen(
             onDismiss = dismissOverlayMenu,
             onItemSelected = onQuickMenuItemSelected,
             renderer = xServerView?.renderer,
+            container = container,
             winHandler = xServerView?.getxServer()?.winHandler,
             wineProcesses = quickMenuWineProcesses,
             isWineProcessesLoading = quickMenuWineProcessesLoading,
