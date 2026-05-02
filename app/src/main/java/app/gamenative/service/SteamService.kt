@@ -4018,7 +4018,28 @@ class SteamService : Service(), IChallengeUrlChanged {
                         val queue = Collections.synchronizedList(mutableListOf<Int>())
 
                         db.withTransaction {
-                            picsCallback.packages.values.forEach { pkg ->
+                            // When the same app appears in multiple packages (e.g. user owns the game and
+                            // also has a free-weekend / demo / family-shared sub for it), the previous
+                            // implementation overwrote SteamApp.packageId with whichever pkg was iterated
+                            // last — non-deterministic and prone to landing on a non-user-owned package,
+                            // which then makes the user's own game appear as family-shared in the library.
+                            // To fix that we (a) process user-owned packages last so they win the
+                            // last-write-wins assignment within this batch and (b) refuse to downgrade an
+                            // existing user-owned packageId across batches.
+                            val accountId = userSteamId?.accountID?.toInt()
+                            val userOwnedPackageIds: Set<Int> = if (accountId != null) {
+                                val packageIds = picsCallback.packages.values.map { it.id }
+                                licenseDao.findLicenses(packageIds)
+                                    .filter { it.ownerAccountId.contains(accountId) }
+                                    .mapTo(HashSet()) { it.packageId }
+                            } else {
+                                emptySet()
+                            }
+
+                            val orderedPackages = picsCallback.packages.values
+                                .sortedBy { pkg -> if (pkg.id in userOwnedPackageIds) 1 else 0 }
+
+                            orderedPackages.forEach { pkg ->
                                 val appIds = pkg.keyValues["appids"].children.map { it.asInteger() }
                                 licenseDao.updateApps(pkg.id, appIds)
 
@@ -4027,13 +4048,23 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                                 // Insert a stub row (or update) of SteamApps to the database.
                                 appIds.forEach { appid ->
-                                    val steamApp = appDao.findApp(appid)?.copy(packageId = pkg.id)
-                                    if (steamApp != null) {
-                                        appDao.update(steamApp)
-                                    } else {
-                                        val stubSteamApp = SteamApp(id = appid, packageId = pkg.id)
-                                        appDao.insert(stubSteamApp)
+                                    val existing = appDao.findApp(appid)
+                                    if (existing == null) {
+                                        appDao.insert(SteamApp(id = appid, packageId = pkg.id))
+                                        return@forEach
                                     }
+                                    if (existing.packageId == pkg.id) {
+                                        return@forEach
+                                    }
+                                    if (accountId != null && existing.packageId != INVALID_PKG_ID) {
+                                        val existingIsUserOwned = licenseDao.findLicense(existing.packageId)
+                                            ?.ownerAccountId?.contains(accountId) == true
+                                        val newIsUserOwned = pkg.id in userOwnedPackageIds
+                                        if (existingIsUserOwned && !newIsUserOwned) {
+                                            return@forEach
+                                        }
+                                    }
+                                    appDao.update(existing.copy(packageId = pkg.id))
                                 }
 
                                 queue.addAll(appIds)
