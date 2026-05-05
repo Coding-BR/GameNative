@@ -8,8 +8,8 @@ import app.gamenative.data.GameSource
  * Wipes C:\ProgramData\Hogwarts Legacy on every boot. The game caches state there
  * that occasionally leaves Denuvo / EOS in a bad mood after a previous session.
  */
-val EPIC_Fix_fa4240e57a3c46b39f169041b7811293: KeyedGameFix = KeyedDeleteFolderFix(
+val EPIC_Fix_864c7bc2c2394f7dbd1b534aa068ff56: KeyedGameFix = KeyedDeleteFolderFix(
     gameSource = GameSource.EPIC,
-    gameId = "fa4240e57a3c46b39f169041b7811293",
+    gameId = "864c7bc2c2394f7dbd1b534aa068ff56",
     driveCRelativePaths = listOf("ProgramData/Hogwarts Legacy"),
 )
