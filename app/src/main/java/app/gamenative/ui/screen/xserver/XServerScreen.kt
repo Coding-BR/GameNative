@@ -103,10 +103,12 @@ import app.gamenative.ui.widget.PerformanceHudView
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
+import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.ManifestComponentHelper
 import app.gamenative.utils.PreInstallSteps
 import app.gamenative.utils.SteamTokenLogin
 import app.gamenative.utils.SteamUtils
+import app.gamenative.utils.WineProcessSnapshotHelper
 import com.posthog.PostHog
 import com.winlator.alsaserver.ALSAClient
 import com.winlator.container.Container
@@ -284,48 +286,6 @@ private fun buildEssentialProcessAllowlist(): Set<String> {
     return (essentialServices + CORE_WINE_PROCESSES).toSet()
 }
 
-private suspend fun requestWineProcessSnapshot(winHandler: WinHandler): List<ProcessInfo>? {
-    val previousListener = winHandler.getOnGetProcessInfoListener()
-    val lock = Any()
-    var currentList = mutableListOf<ProcessInfo>()
-    var expectedCount = 0
-    val deferred = CompletableDeferred<List<ProcessInfo>?>()
-
-    val listener = OnGetProcessInfoListener { index, count, processInfo ->
-        previousListener?.onGetProcessInfo(index, count, processInfo)
-        synchronized(lock) {
-            if (count == 0 && processInfo == null) {
-                if (!deferred.isCompleted) deferred.complete(emptyList())
-                return@synchronized
-            }
-            if (index == 0) {
-                currentList = mutableListOf()
-                expectedCount = count
-                if (count == 0 && !deferred.isCompleted) {
-                    deferred.complete(emptyList())
-                    return@synchronized
-                }
-            }
-            if (processInfo != null) {
-                currentList.add(processInfo)
-            }
-            if (currentList.size >= expectedCount && !deferred.isCompleted) {
-                deferred.complete(currentList.toList())
-            }
-        }
-    }
-
-    return try {
-        winHandler.setOnGetProcessInfoListener(listener)
-        winHandler.listProcesses()
-        withTimeoutOrNull(EXIT_PROCESS_RESPONSE_TIMEOUT_MS) {
-            deferred.await()
-        }
-    } finally {
-        winHandler.setOnGetProcessInfoListener(previousListener)
-    }
-}
-
 // TODO logs in composables are 'unstable' which can cause recomposition (performance issues)
 
 @Composable
@@ -483,6 +443,13 @@ fun XServerScreen(
     var fpsLimiterEnabled by rememberSaveable(container.id) { mutableStateOf(initialFpsLimiterEnabled(container)) }
     var fpsLimiterTarget by rememberSaveable(container.id) { mutableIntStateOf(initialFpsLimiterTarget(container)) }
 
+    // LSFG tab in QuickMenu only visible when enabled in container settings
+    val isLsfgAvailable = LsfgQuickMenuHelper.isAvailable(container)
+    val initialLsfgSettings = remember(container.id) { LsfgQuickMenuHelper.readSettings(container) }
+    var lsfgMultiplier by rememberSaveable(container.id) { mutableIntStateOf(initialLsfgSettings.multiplier) }
+    var lsfgFlowScale by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.flowScale) }
+    var lsfgPerformanceMode by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.performanceMode) }
+
     fun persistFpsLimiterState() {
         container.putExtra(FPS_LIMITER_ENABLED_EXTRA, fpsLimiterEnabled)
         container.putExtra(FPS_LIMITER_TARGET_EXTRA, fpsLimiterTarget)
@@ -576,6 +543,28 @@ fun XServerScreen(
             applyFpsLimiterToEngines(sanitized)
         }
         persistFpsLimiterState()
+    }
+
+    fun applyLsfgSettings() {
+        LsfgQuickMenuHelper.applySettings(
+            container,
+            LsfgQuickMenuHelper.Settings(lsfgMultiplier, lsfgFlowScale, lsfgPerformanceMode),
+        )
+    }
+
+    fun applyLsfgMultiplier(mult: Int) {
+        lsfgMultiplier = LsfgQuickMenuHelper.sanitizeMultiplier(mult)
+        applyLsfgSettings()
+    }
+
+    fun applyLsfgFlowScale(scale: Float) {
+        lsfgFlowScale = LsfgQuickMenuHelper.sanitizeFlowScale(scale)
+        applyLsfgSettings()
+    }
+
+    fun applyLsfgPerformanceMode(enabled: Boolean) {
+        lsfgPerformanceMode = enabled
+        applyLsfgSettings()
     }
 
     LaunchedEffect(xServerView) {
@@ -942,24 +931,10 @@ fun XServerScreen(
             return@LaunchedEffect
         }
 
-        val winHandler = xServerView?.getxServer()?.winHandler
-        if (winHandler == null) {
-            quickMenuWineProcesses = emptyList()
-            quickMenuWineProcessesLoading = false
-            return@LaunchedEffect
-        }
-
         quickMenuWineProcessesLoading = true
         while (showQuickMenu && quickMenuToolsVisible) {
-            val snapshot = withContext(Dispatchers.IO) {
-                requestWineProcessSnapshot(winHandler)
-                    ?.sortedWith(
-                        compareByDescending<ProcessInfo> { normalizeProcessName(it.name) !in buildEssentialProcessAllowlist() }
-                            .thenByDescending { it.memoryUsage },
-                    )
-            }
-            if (snapshot != null) {
-                quickMenuWineProcesses = snapshot
+            quickMenuWineProcesses = withContext(Dispatchers.IO) {
+                WineProcessSnapshotHelper.readFromProc()
             }
             quickMenuWineProcessesLoading = false
             delay(QUICK_MENU_PROCESS_POLL_INTERVAL_MS)
@@ -2382,10 +2357,20 @@ fun XServerScreen(
             onItemSelected = onQuickMenuItemSelected,
             renderer = xServerView?.renderer,
             container = container,
-            winHandler = xServerView?.getxServer()?.winHandler,
             wineProcesses = quickMenuWineProcesses,
             isWineProcessesLoading = quickMenuWineProcessesLoading,
             onToolsVisibilityChanged = { quickMenuToolsVisible = it },
+            onEndWineProcess = { process ->
+                val killed = runCatching {
+                    ProcessHelper.killProcess(process.pid)
+                }.onFailure { error ->
+                    Timber.w(error, "Failed to kill Wine process pid=%d", process.pid)
+                }.isSuccess
+
+                if (killed) {
+                    quickMenuWineProcesses = quickMenuWineProcesses.filterNot { it.pid == process.pid }
+                }
+            },
             isPerformanceHudEnabled = isPerformanceHudEnabled,
             performanceHudConfig = performanceHudConfig,
             fpsLimiterEnabled = fpsLimiterEnabled,
@@ -2402,6 +2387,14 @@ fun XServerScreen(
                 if (isTouchscreenModeActive) add(QuickMenuAction.TOUCHSCREEN_MODE)
                 if (isDisableMouseInput) add(QuickMenuAction.DISABLE_MOUSE)
             },
+            // LSFG hot-reload (tab only visible when enabled in container settings)
+            isLsfgAvailable = isLsfgAvailable,
+            lsfgMultiplier = lsfgMultiplier,
+            lsfgFlowScale = lsfgFlowScale,
+            lsfgPerformanceMode = lsfgPerformanceMode,
+            onLsfgMultiplierChanged = ::applyLsfgMultiplier,
+            onLsfgFlowScaleChanged = ::applyLsfgFlowScale,
+            onLsfgPerformanceModeChanged = ::applyLsfgPerformanceMode,
         )
 
         if (manualResumeMode && PluviaApp.isOverlayPaused && !showQuickMenu && !keepPausedForEditor) {
@@ -3461,7 +3454,7 @@ private fun getWineStartCommand(
         // Get Epic launch parameters
         Timber.tag("XServerScreen").d("Building Epic launch parameters for ${game.appName}...")
         val runArguments: List<String> = runBlocking {
-            val result = EpicService.buildLaunchParameters(context, game, false)
+            val result = EpicService.buildLaunchParameters(context, container, game, false)
             if (result.isFailure) {
                 Timber.tag("XServerScreen").e(result.exceptionOrNull(), "Failed to build Epic launch parameters")
             }
