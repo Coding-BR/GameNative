@@ -47,7 +47,10 @@ object SteamBootstrap {
     private external fun nativeShutdown()
 
     @JvmStatic
-    private external fun nativePrepareApp(appId: Int)
+    private external fun nativePrepareApp(appIds: IntArray)
+
+    @JvmStatic
+    private external fun nativeSetCloudEnabled(appId: Int, enabled: Boolean)
 
     /**
      * Boot the native Steam client. Safe to call multiple times: only the
@@ -143,16 +146,23 @@ object SteamBootstrap {
     }
 
     /**
-     * Pre-warm PICS metadata + an encrypted app ticket for [appId] so the
-     * Wine subprocess we spawn afterwards doesn't stall in
-     * "Validating Subscriptions" / "creating online session". Should be
-     * called after [start] returns 0, and before the Wine launch.
+     * Pre-warm PICS metadata + an encrypted app ticket for [appId] (the
+     * parent game) and refresh the per-DLC ownership tickets / SetDlcEnabled
+     * for every entry in [dlcAppIds] so the Wine subprocess we spawn
+     * afterwards doesn't stall in "Validating Subscriptions" / "creating
+     * online session" and the engine has decryption keys for all owned DLC
+     * depots. Should be called after [start] returns 0, and before the Wine
+     * launch.
+     *
+     * The native side treats index 0 of the assembled array as the parent
+     * (drives PICS refresh + SetLanguage), and indices 1..n as DLC AppIDs
+     * (drives SetDlcEnabled + UpdateAppOwnershipTicket per entry).
      *
      * Best-effort: if the engine isn't initialized or not yet logged on,
      * the native side logs a warning and returns without blocking. Safe to
      * call multiple times.
      */
-    fun prepareApp(appId: Int) {
+    fun prepareApp(appId: Int, dlcAppIds: IntArray = IntArray(0)) {
         if (!initialized) {
             Log.i(TAG, "prepareApp($appId) called but not initialized; skipping")
             return
@@ -161,10 +171,45 @@ object SteamBootstrap {
             Log.i(TAG, "prepareApp called with appId=$appId; skipping")
             return
         }
+        // Assemble [parent, dlc1, dlc2, ...]. Filter junk (<=0) and
+        // dedupe so we never accidentally tell the engine "this DLC is the
+        // parent" or process the same AppID twice.
+        val combined = IntArray(1 + dlcAppIds.size)
+        combined[0] = appId
+        var written = 1
+        for (id in dlcAppIds) {
+            if (id <= 0 || id == appId) continue
+            var dup = false
+            for (j in 1 until written) {
+                if (combined[j] == id) { dup = true; break }
+            }
+            if (!dup) {
+                combined[written] = id
+                written++
+            }
+        }
+        val finalIds = if (written == combined.size) combined else combined.copyOf(written)
+
         try {
-            nativePrepareApp(appId)
+            nativePrepareApp(finalIds)
         } catch (t: Throwable) {
             Log.e(TAG, "nativePrepareApp threw", t)
+        }
+    }
+
+    fun setCloudEnabled(appId: Int, enabled: Boolean) {
+        if (!initialized) {
+            Log.i(TAG, "setCloudEnabled($appId, $enabled) called but not initialized; skipping")
+            return
+        }
+        if (appId <= 0) {
+            Log.i(TAG, "setCloudEnabled called with appId=$appId; skipping")
+            return
+        }
+        try {
+            nativeSetCloudEnabled(appId, enabled)
+        } catch (t: Throwable) {
+            Log.e(TAG, "nativeSetCloudEnabled threw", t)
         }
     }
 }
