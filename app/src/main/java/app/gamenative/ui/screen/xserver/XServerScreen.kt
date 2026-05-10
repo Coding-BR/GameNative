@@ -451,7 +451,7 @@ fun XServerScreen(
         container.putExtra("lsfgMultiplier", "0")
         LsfgQuickMenuHelper.readSettings(container)
     }
-    var lsfgMultiplier by rememberSaveable(container.id) { mutableIntStateOf(initialLsfgSettings.multiplier) }
+    var lsfgMultiplier by remember(container.id) { mutableIntStateOf(initialLsfgSettings.multiplier) }
     var lsfgFlowScale by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.flowScale) }
     var lsfgPerformanceMode by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.performanceMode) }
 
