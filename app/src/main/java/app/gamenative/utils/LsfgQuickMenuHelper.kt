@@ -1,6 +1,5 @@
 package app.gamenative.utils
 
-import android.content.Context
 import com.winlator.container.Container
 import java.util.Locale
 
@@ -17,8 +16,8 @@ object LsfgQuickMenuHelper {
         LsfgVkManager.isSupported(container)
 
     /** Whether the LSFG controls should be active (DLL is reachable). */
-    fun isControlActive(context: Context, container: Container): Boolean =
-        LsfgVkManager.isSupported(container) && LsfgVkManager.isDllAvailable(context)
+    fun isControlActive(container: Container): Boolean =
+        LsfgVkManager.isSupported(container) && LsfgVkManager.isDllAvailable()
 
     fun readSettings(container: Container): Settings = Settings(
         multiplier = LsfgVkManager.multiplier(container),

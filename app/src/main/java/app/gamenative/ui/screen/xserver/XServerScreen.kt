@@ -445,7 +445,7 @@ fun XServerScreen(
     // LSFG quick-menu tab is visible whenever the container is Bionic. Inside the
     // tab, controls are only active when a Steam-provided Lossless.dll is reachable.
     val isLsfgTabVisible = LsfgQuickMenuHelper.shouldShowTab(container)
-    val isLsfgControlActive = LsfgQuickMenuHelper.isControlActive(context, container)
+    val isLsfgControlActive = LsfgQuickMenuHelper.isControlActive(container)
     val initialLsfgSettings = remember(container.id) {
         // Session default only: start each launch with LSFG off.
         container.putExtra("lsfgMultiplier", "0")
@@ -528,19 +528,11 @@ fun XServerScreen(
         }
     }
 
-    // The LSFG-VK Android port has no inter-frame pacing in its present loop —
-    // only FIFO inside the wrapper Vulkan swapchain spreads its multiplier-many
-    // PresentPixmap calls across panel vsyncs. Any external limiter that paces
-    // below panel rate forces idle gaps between LSFG's bursts and the panel
-    // shows stale frames during those gaps (visible as judder). So when LSFG is
-    // armed we hand pacing entirely to FIFO + wrapper backpressure: source rate
-    // settles at panel_rate / multiplier naturally, no external cap.
     fun applyFpsLimiterToEngines(limit: Int) {
-        val effective = if (isLsfgControlActive && lsfgMultiplier >= 2) 0 else limit
-        xServerView?.setFrameRateLimit(effective)
+        xServerView?.setFrameRateLimit(limit)
         xServerView?.getxServer()
             ?.getExtension<PresentExtension>(PresentExtension.MAJOR_OPCODE.toInt())
-            ?.setFrameRateLimit(effective)
+            ?.setFrameRateLimit(limit)
     }
 
     fun applyFpsLimiterEnabled(enabled: Boolean) {
@@ -568,7 +560,11 @@ fun XServerScreen(
     fun applyLsfgMultiplier(mult: Int) {
         lsfgMultiplier = LsfgQuickMenuHelper.sanitizeMultiplier(mult)
         applyLsfgSettings()
-        applyFpsLimiterToEngines(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
+        if (lsfgMultiplier >= 2) {
+            applyFpsLimiterToEngines(0)
+        } else {
+            applyFpsLimiterToEngines(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
+        }
     }
 
     fun applyLsfgFlowScale(scale: Float) {

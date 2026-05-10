@@ -1562,7 +1562,7 @@ fun preLaunchApp(
         // issues so game launch is never blocked by Steam server reachability.
         try {
             val ownsLsfg = LsfgVkManager.ownsLosslessScaling()
-            val dllAvailable = LsfgVkManager.isDllAvailable(context)
+            val dllAvailable = LsfgVkManager.isDllAvailable()
             if (ownsLsfg && !dllAvailable && !isOffline &&
                 SteamService.isConnected && SteamService.isLoggedIn
             ) {
