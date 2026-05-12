@@ -1,11 +1,12 @@
 package com.winlator.xenvironment.components;
 
+import android.opengl.GLES11Ext;
+import android.opengl.GLES20;
 import android.util.Log;
 
 import androidx.annotation.Keep;
 
-import com.winlator.renderer.GLRenderer;
-import com.winlator.renderer.Texture;
+import com.winlator.renderer.VulkanRenderer;
 import com.winlator.xconnector.Client;
 import com.winlator.xconnector.ConnectionHandler;
 import com.winlator.xconnector.RequestHandler;
@@ -18,11 +19,14 @@ import com.winlator.xserver.XServer;
 import java.io.IOException;
 
 public class VirGLRendererComponent extends EnvironmentComponent implements ConnectionHandler, RequestHandler {
+    private static final String TAG = "VirGLRendererComponent";
     private final XServer xServer;
     private final UnixSocketConfig socketConfig;
     private XConnectorEpoll connector;
-    private long sharedEGLContextPtr;
-
+    // Detected once on the first flushFrontbuffer call.
+    // GL_BGRA_EXT requires GL_EXT_read_format_bgra; fall back to GL_RGBA + swapRB.
+    private volatile int readPixelsFormat = GLES11Ext.GL_BGRA;
+    private volatile boolean readFormatDetected = false;
     static {
         System.loadLibrary("virglrenderer");
     }
@@ -34,7 +38,7 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
 
     @Override
     public void start() {
-        Log.d("VirGLRendererComponent", "Starting...");
+        Log.d(TAG, "Starting...");
         if (connector != null) return;
         connector = new XConnectorEpoll(socketConfig, this, this);
         connector.start();
@@ -42,7 +46,7 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
 
     @Override
     public void stop() {
-        Log.d("VirGLRendererComponent", "Stopping...");
+        Log.d(TAG, "Stopping...");
         if (connector != null) {
             connector.stop();
             connector = null;
@@ -56,27 +60,7 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
 
     @Keep
     private long getSharedEGLContext() {
-        Log.d("VirGLRendererComponent", "Calling getSharedEGLContext");
-        if (sharedEGLContextPtr != 0) return sharedEGLContextPtr;
-        final Thread thread = Thread.currentThread();
-        try {
-            GLRenderer renderer = xServer.getRenderer();
-            renderer.xServerView.queueEvent(() -> {
-                sharedEGLContextPtr = getCurrentEGLContextPtr();
-
-                synchronized(thread) {
-                    thread.notify();
-                }
-            });
-            synchronized (thread) {
-                thread.wait();
-            }
-        }
-        catch (Exception e) {
-            return 0;
-        }
-        Log.d("VirGLRendererComponent", "Finished getSharedEGLContext");
-        return sharedEGLContextPtr;
+        return 0;
     }
 
     @Override
@@ -87,44 +71,61 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
 
     @Override
     public void handleNewConnection(Client client) {
-        Log.d("VirGLRendererComponent", "Calling handleNewConnection");
-        getSharedEGLContext();
+        Log.d(TAG, "New connection fd=" + client.clientSocket.fd);
         long clientPtr = handleNewConnection(client.clientSocket.fd);
         client.setTag(clientPtr);
-        Log.d("VirGLRendererComponent", "Finished handleNewConnection");
     }
 
     @Override
     public boolean handleRequest(Client client) throws IOException {
-        Log.d("VirGLRendererComponent", "Calling handleRequest");
         long clientPtr = (long)client.getTag();
         handleRequest(clientPtr);
-        Log.d("VirGLRendererComponent", "Finished handleRequest");
         return true;
     }
 
     @Keep
     private void flushFrontbuffer(int drawableId, int framebuffer) {
-        Log.d("VirGLRendererComponent", "Calling flushFrontbuffer");
         Drawable drawable = xServer.drawableManager.getDrawable(drawableId);
         if (drawable == null) return;
 
         synchronized (drawable.renderLock) {
-            drawable.setData(null);
-            Texture texture = drawable.getTexture();
-            texture.copyFromFramebuffer(framebuffer, drawable.width, drawable.height);
+            java.nio.ByteBuffer buf = drawable.getData();
+            if (buf == null) return;
+            buf.rewind();
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
+            GLES20.glReadPixels(0, 0, drawable.width, drawable.height,
+                    readPixelsFormat, GLES20.GL_UNSIGNED_BYTE, buf);
+
+            if (!readFormatDetected) {
+                readFormatDetected = true;
+                int err = GLES20.glGetError();
+                if (err != GLES20.GL_NO_ERROR) {
+                    Log.w(TAG, "GL_BGRA_EXT not supported (err=0x" + Integer.toHexString(err)
+                            + "), falling back to GL_RGBA + swapRB");
+                    readPixelsFormat = GLES20.GL_RGBA;
+                    // Re-read with the correct format for this first frame.
+                    buf.rewind();
+                    GLES20.glReadPixels(0, 0, drawable.width, drawable.height,
+                            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf);
+                    // Tell the Vulkan compositor to swap R/B channels at composite time.
+                    VulkanRenderer renderer = xServer.getRenderer();
+                    if (renderer != null) renderer.setSwapRB(true);
+                } else {
+                    Log.d(TAG, "GL_BGRA_EXT read pixels OK");
+                }
+            }
+
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            buf.rewind();
         }
 
         Runnable onDrawListener = drawable.getOnDrawListener();
         if (onDrawListener != null) onDrawListener.run();
-        Log.d("VirGLRendererComponent", "Finished flushFrontbuffer");
     }
 
     private native long handleNewConnection(int fd);
 
     private native void handleRequest(long clientPtr);
-
-    private native long getCurrentEGLContextPtr();
 
     private native void destroyClient(long clientPtr);
 

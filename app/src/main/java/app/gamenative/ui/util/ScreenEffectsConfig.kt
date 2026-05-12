@@ -1,18 +1,7 @@
 package app.gamenative.ui.util
 
 import com.winlator.container.Container
-import com.winlator.renderer.GLRenderer
-import com.winlator.renderer.effects.ColorEffect
-import com.winlator.renderer.effects.CRTEffect
-import com.winlator.renderer.effects.Effect
-import com.winlator.renderer.effects.FSR1EasuEffect
-import com.winlator.renderer.effects.FSR1RcasEffect
-import com.winlator.renderer.effects.FXAAEffect
-import com.winlator.renderer.effects.NTSCCombinedEffect
-import com.winlator.renderer.effects.ScalingModeEffect
-import com.winlator.renderer.effects.ToonEffect
-import com.winlator.renderer.effects.VividEffect
-import kotlin.math.abs
+import com.winlator.renderer.VulkanRenderer
 
 data class ScreenEffectsConfig(
     val brightness: Float = 0f,
@@ -60,7 +49,8 @@ fun loadScreenEffectsConfig(container: Container?): ScreenEffectsConfig {
         contrast = container.getExtra(ScreenEffectsConfig.KEY_CONTRAST)?.toFloatOrNull() ?: 0f,
         gamma = container.getExtra(ScreenEffectsConfig.KEY_GAMMA)?.toFloatOrNull() ?: 1f,
         scalingMode = container.getExtra(ScreenEffectsConfig.KEY_SCALING_MODE)?.toIntOrNull() ?: ScreenEffectsConfig.SCALING_MODE_NONE,
-        fsrSharpnessLevel = container.getExtra(ScreenEffectsConfig.KEY_FSR_SHARPNESS)?.toIntOrNull() ?: ScreenEffectsConfig.FSR_DEFAULT_LEVEL,
+        fsrSharpnessLevel =
+        container.getExtra(ScreenEffectsConfig.KEY_FSR_SHARPNESS)?.toIntOrNull() ?: ScreenEffectsConfig.FSR_DEFAULT_LEVEL,
         enableToon = container.getExtra(ScreenEffectsConfig.KEY_ENABLE_TOON)?.toBooleanStrictOrNull() ?: false,
         enableFXAA = container.getExtra(ScreenEffectsConfig.KEY_ENABLE_FXAA)?.toBooleanStrictOrNull() ?: false,
         enableVivid = container.getExtra(ScreenEffectsConfig.KEY_ENABLE_VIVID)?.toBooleanStrictOrNull() ?: false,
@@ -98,56 +88,32 @@ fun fsrQuickMenuLevelToStops(level: Int): Float {
     }
 }
 
-fun applyScreenEffectsConfig(renderer: GLRenderer, config: ScreenEffectsConfig) {
-    val composer = renderer.getEffectComposer()
-    val effects = mutableListOf<Effect>()
+/**
+ * Applies post-processing config to the Vulkan renderer.
+ *
+ * Single-pass effects available in the SPIR-V fragment shader:
+ *   FSR (+ DLS sharpening), CRT, HDR (Vivid), Natural.
+ * Multi-pass effects (FXAA, Toon, NTSC) require additional render passes — deferred.
+ * Brightness / contrast / gamma are applied as a post-effect colour adjustment.
+ */
+fun applyScreenEffectsConfig(renderer: VulkanRenderer, config: ScreenEffectsConfig) {
+    // Filter mode: nearest-neighbour vs linear interpolation.
+    val filterMode = if (config.scalingMode == ScreenEffectsConfig.SCALING_MODE_NEAREST) 1 else 0
+    renderer.setFilterMode(filterMode)
 
-    when (config.scalingMode) {
-        ScreenEffectsConfig.SCALING_MODE_FSR, ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT -> {
-            val easuEffect = composer.getEffect(FSR1EasuEffect::class.java) ?: FSR1EasuEffect()
-            easuEffect.setPreserveAspect(config.scalingMode == ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT)
-            effects += easuEffect
-            val rcasEffect = composer.getEffect(FSR1RcasEffect::class.java) ?: FSR1RcasEffect()
-            rcasEffect.sharpnessStops = fsrQuickMenuLevelToStops(config.fsrSharpnessLevel)
-            effects += rcasEffect
+    // Colour adjustments are applied in the fragment shader regardless of effect.
+    renderer.setColorAdjustment(config.brightness, config.contrast, config.gamma)
+
+    // Effect selection: priority order matches the original EffectComposer chain.
+    val sharpness = fsrQuickMenuLevelToStops(config.fsrSharpnessLevel)
+    when {
+        config.scalingMode == ScreenEffectsConfig.SCALING_MODE_FSR ||
+        config.scalingMode == ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT -> {
+            renderer.setEffect(VulkanRenderer.EFFECT_FSR, sharpness)
         }
-        ScreenEffectsConfig.SCALING_MODE_NONE -> Unit
-        else -> {
-            val scalingEffect = composer.getEffect(ScalingModeEffect::class.java) ?: ScalingModeEffect()
-            scalingEffect.mode = when (config.scalingMode) {
-                ScreenEffectsConfig.SCALING_MODE_NEAREST -> ScalingModeEffect.Mode.NEAREST
-                ScreenEffectsConfig.SCALING_MODE_FILL -> ScalingModeEffect.Mode.FILL
-                ScreenEffectsConfig.SCALING_MODE_STRETCH -> ScalingModeEffect.Mode.STRETCH
-                else -> ScalingModeEffect.Mode.LINEAR
-            }
-            effects += scalingEffect
-        }
+        config.enableCRT -> renderer.setEffect(VulkanRenderer.EFFECT_CRT, sharpness)
+        config.enableVivid -> renderer.setEffect(VulkanRenderer.EFFECT_HDR, sharpness)
+        // FXAA, Toon, NTSC need multi-pass — fall back to no post-processing for now.
+        else -> renderer.setEffect(VulkanRenderer.EFFECT_NONE, sharpness)
     }
-
-    if (abs(config.brightness) > 0.001f || abs(config.contrast) > 0.001f || abs(config.gamma - 1.0f) > 0.001f) {
-        val colorEffect = ColorEffect().apply {
-            brightness = config.brightness / 100f
-            contrast = config.contrast / 100f
-            gamma = config.gamma
-        }
-        effects += colorEffect
-    }
-
-    if (config.enableToon) {
-        effects += composer.getEffect(ToonEffect::class.java) ?: ToonEffect()
-    }
-    if (config.enableFXAA) {
-        effects += composer.getEffect(FXAAEffect::class.java) ?: FXAAEffect()
-    }
-    if (config.enableVivid) {
-        effects += composer.getEffect(VividEffect::class.java) ?: VividEffect()
-    }
-    if (config.enableCRT) {
-        effects += composer.getEffect(CRTEffect::class.java) ?: CRTEffect()
-    }
-    if (config.enableNTSC) {
-        effects += composer.getEffect(NTSCCombinedEffect::class.java) ?: NTSCCombinedEffect()
-    }
-
-    composer.setEffects(effects)
 }

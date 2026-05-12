@@ -204,6 +204,14 @@ android {
     //     }
     // }
 
+    // Phase A — Vulkan compositor (arm64-v8a only; armeabi-v7a is a no-op in the CMakeLists)
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/vulkan_renderer/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     // (For now) Uncomment for LeakCanary to work.
     // configurations {
     //     debugImplementation {

@@ -93,10 +93,10 @@ import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.adaptivePanelWidth
 import app.gamenative.utils.MathUtils.normalizedProgress
 import com.winlator.container.Container
-import com.winlator.renderer.GLRenderer
+import com.winlator.renderer.VulkanRenderer
 import com.winlator.winhandler.ProcessInfo
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 object QuickMenuAction {
     const val KEYBOARD = 1
@@ -236,7 +236,7 @@ fun QuickMenu(
     isVisible: Boolean,
     onDismiss: () -> Unit,
     onItemSelected: (Int) -> Boolean,
-    renderer: GLRenderer? = null,
+    renderer: VulkanRenderer? = null,
     container: Container? = null,
     wineProcesses: List<ProcessInfo> = emptyList(),
     isWineProcessesLoading: Boolean = false,
@@ -278,7 +278,7 @@ fun QuickMenu(
                 icon = Icons.Filled.Mouse,
                 labelResId = R.string.disable_mouse_input,
                 accentColor = PluviaTheme.colors.accentPurple,
-            )
+            ),
         )
         add(
             QuickMenuItem(
@@ -286,7 +286,7 @@ fun QuickMenu(
                 icon = Icons.Default.Keyboard,
                 labelResId = R.string.keyboard,
                 accentColor = PluviaTheme.colors.accentPurple,
-            )
+            ),
         )
         add(
             QuickMenuItem(
@@ -294,7 +294,7 @@ fun QuickMenu(
                 icon = Icons.Default.TouchApp,
                 labelResId = R.string.input_controls,
                 accentColor = PluviaTheme.colors.accentPurple,
-            )
+            ),
         )
         if (hasPhysicalController) {
             add(
@@ -303,7 +303,7 @@ fun QuickMenu(
                     icon = Icons.Default.Gamepad,
                     labelResId = R.string.edit_physical_controller,
                     accentColor = PluviaTheme.colors.accentPurple,
-                )
+                ),
             )
         }
         add(
@@ -312,7 +312,7 @@ fun QuickMenu(
                 icon = Icons.Default.Edit,
                 labelResId = R.string.edit_controls,
                 accentColor = PluviaTheme.colors.accentPurple,
-            )
+            ),
         )
         add(
             QuickMenuItem(
@@ -320,15 +320,17 @@ fun QuickMenu(
                 icon = Icons.Default.Fingerprint,
                 labelResId = R.string.touchscreen_mode,
                 accentColor = PluviaTheme.colors.accentPurple,
-            )
+            ),
         )
     }
 
     var selectedTab by rememberSaveable {
         mutableIntStateOf(
-            if (PrefManager.quickMenuLastTab == QuickMenuTab.LSFG && !isLsfgAvailable)
+            if (PrefManager.quickMenuLastTab == QuickMenuTab.LSFG && !isLsfgAvailable) {
                 QuickMenuTab.HUD
-            else PrefManager.quickMenuLastTab
+            } else {
+                PrefManager.quickMenuLastTab
+            },
         )
     }
     val selectedTabLabelResId = when (selectedTab) {
@@ -645,10 +647,20 @@ fun QuickMenu(
                                                         }
                                                     },
                                                     focusRequester = if (index == 0) controllerItemFocusRequester else null,
-                                                    secondaryIcon = if (item.id == QuickMenuAction.TOUCHSCREEN_MODE && isTouchscreenModeActive)
-                                                        Icons.Default.Settings else null,
-                                                    onSecondaryClick = if (item.id == QuickMenuAction.TOUCHSCREEN_MODE && isTouchscreenModeActive)
-                                                        onTouchGestureSettingsClick else null,
+                                                    secondaryIcon = if (item.id == QuickMenuAction.TOUCHSCREEN_MODE &&
+                                                        isTouchscreenModeActive
+                                                    ) {
+                                                        Icons.Default.Settings
+                                                    } else {
+                                                        null
+                                                    },
+                                                    onSecondaryClick = if (item.id == QuickMenuAction.TOUCHSCREEN_MODE &&
+                                                        isTouchscreenModeActive
+                                                    ) {
+                                                        onTouchGestureSettingsClick
+                                                    } else {
+                                                        null
+                                                    },
                                                 )
                                             }
                                         }
@@ -764,7 +776,9 @@ private fun PerformanceHudQuickMenuTab(
             title = stringResource(R.string.performance_hud_fps_limiter),
             subtitle = if (limiterControlledByLsfg) {
                 stringResource(R.string.performance_hud_fps_limiter_lsfg_override)
-            } else null,
+            } else {
+                null
+            },
             enabled = fpsLimiterEnabled && !limiterControlledByLsfg,
             onToggle = {
                 if (!limiterControlledByLsfg) onFpsLimiterEnabledChanged(!fpsLimiterEnabled)
@@ -1217,7 +1231,7 @@ private fun QuickMenuCloseButton(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .clip(shape)
             .background(
@@ -1281,7 +1295,7 @@ private fun QuickMenuTabButton(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .clip(shape)
             .background(
@@ -1296,7 +1310,7 @@ private fun QuickMenuTabButton(
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .onFocusChanged {
                 if (it.isFocused && !selected) {
@@ -1356,7 +1370,7 @@ private fun QuickMenuRailActionButton(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                         shape = shape,
                     )
-                }
+                },
             )
             .clip(shape)
             .background(
@@ -1371,7 +1385,7 @@ private fun QuickMenuRailActionButton(
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -1419,7 +1433,7 @@ private fun QuickMenuChoiceChip(
                         color = if (selected) accentColor.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                         shape = shape,
                     )
-                }
+                },
             )
             .clip(shape)
             .background(
@@ -1434,7 +1448,7 @@ private fun QuickMenuChoiceChip(
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .selectable(
                 selected = selected,
@@ -1502,14 +1516,14 @@ private fun QuickMenuAdjustmentRow(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .onFocusChanged {
                 if (!it.isFocused) {
@@ -1750,14 +1764,14 @@ private fun QuickMenuToggleRow(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .selectable(
                 selected = isFocused,
@@ -1868,14 +1882,14 @@ private fun QuickMenuProcessRow(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .focusable(interactionSource = interactionSource)
             .onPreviewKeyEvent { keyEvent ->
@@ -1883,7 +1897,8 @@ private fun QuickMenuProcessRow(
                     when (keyEvent.nativeKeyEvent.keyCode) {
                         KeyEvent.KEYCODE_BUTTON_A,
                         KeyEvent.KEYCODE_DPAD_CENTER,
-                        KeyEvent.KEYCODE_ENTER -> {
+                        KeyEvent.KEYCODE_ENTER,
+                        -> {
                             onEndProcess()
                             true
                         }
@@ -1969,7 +1984,7 @@ private fun QuickMenuItemRow(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .clip(shape)
             .then(
@@ -1984,14 +1999,14 @@ private fun QuickMenuItemRow(
                     )
                 } else {
                     Modifier
-                }
+                },
             )
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
-                }
+                },
             )
             .selectable(
                 selected = isFocused,
@@ -2014,7 +2029,9 @@ private fun QuickMenuItemRow(
                 .then(
                     if (isActive) {
                         Modifier.border(BorderStroke(2.dp, accentColor), CircleShape)
-                    } else Modifier
+                    } else {
+                        Modifier
+                    },
                 )
                 .clip(CircleShape)
                 .background(
