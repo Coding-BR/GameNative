@@ -3242,7 +3242,7 @@ private fun setupXEnvironment(
 
     // Moved here, as guestProgramLauncherComponent.environment is setup after addComponent()
     if (container != null) {
-        if (container.isLaunchRealSteam || container.isLaunchBionicSteam) {
+        if (container.isLaunchRealSteam) {
             SteamTokenLogin(
                 steamId = PrefManager.steamUserSteamId64.toString(),
                 login = PrefManager.username,
@@ -4955,24 +4955,28 @@ private fun extractSteamFiles(
         ImageFs.WINEPREFIX + "/drive_c/Program Files (x86)/Steam/steam.exe",
     )
 
-    // Real-Steam mode is happy with whatever steam.exe ships inside steam.tzst,
-    // so once the prefix has a steam.exe we skip the re-extract on subsequent boots.
-    // Bionic-Steam mode overlays a specific cached steam.exe on top of the tzst
-    // contents, so we always re-run the full path for it.
-    if (!container.isLaunchBionicSteam && steamExe.exists()) return
-
-    val downloaded = File(imageFs.getFilesDir(), "steam.tzst")
-    Timber.i("Extracting steam.tzst")
-    TarCompressorUtils.extract(
-        TarCompressorUtils.Type.ZSTD,
-        downloaded,
-        imageFs.getRootDir(),
-        onExtractFileListener,
-    )
-
     if (container.isLaunchBionicSteam) {
+        // Bionic mode doesn't need the full real-Steam tree from steam.tzst —
+        // libsteamclient.so on the Linux side does all the heavy lifting. We
+        // extract experimental-drm.tzst (steam_api.dll / steam_api64.dll etc.)
+        // and overlay our own steam.exe.
+        val steamDir = steamExe.parentFile ?: return
+        steamDir.mkdirs()
+
+        val drmArchive = File(imageFs.getFilesDir(), "experimental-drm-20260116.tzst")
+        if (drmArchive.exists()) {
+            Timber.i("Extracting experimental-drm.tzst (bionic mode)")
+            TarCompressorUtils.extract(
+                TarCompressorUtils.Type.ZSTD,
+                drmArchive,
+                imageFs.getRootDir(),
+                onExtractFileListener,
+            )
+        } else {
+            Timber.e("experimental-drm-20260116.tzst missing at ${drmArchive.absolutePath}")
+        }
+
         try {
-            steamExe.parentFile?.mkdirs()
             val steamExeSource = File(imageFs.getFilesDir(), "steam.exe")
             if (!steamExeSource.exists()) {
                 Timber.e("steam.exe cache missing at ${steamExeSource.absolutePath} (expected from BionicSteamAssetsDependency)")
@@ -4984,18 +4988,21 @@ private fun extractSteamFiles(
         } catch (e: IOException) {
             Timber.e(e, "Failed to copy cached steam.exe")
         }
-
-        val steamDir = steamExe.parentFile ?: return
-        for (dllName in listOf("steam_api.dll", "steam_api64.dll")) {
-            try {
-                context.assets.open("steampipe/$dllName").use { input ->
-                    Files.copy(input, File(steamDir, dllName).toPath(), REPLACE_EXISTING)
-                }
-            } catch (e: IOException) {
-                Timber.e(e, "Failed to copy $dllName to Steam folder")
-            }
-        }
+        return
     }
+
+    // Real-Steam mode: extract the full real-Steam tree once; subsequent boots
+    // reuse what's already on disk.
+    if (steamExe.exists()) return
+
+    val downloaded = File(imageFs.getFilesDir(), "steam.tzst")
+    Timber.i("Extracting steam.tzst")
+    TarCompressorUtils.extract(
+        TarCompressorUtils.Type.ZSTD,
+        downloaded,
+        imageFs.getRootDir(),
+        onExtractFileListener,
+    )
 }
 
 private fun cleanupBionicSteamAssets(imageFs: ImageFs) {
