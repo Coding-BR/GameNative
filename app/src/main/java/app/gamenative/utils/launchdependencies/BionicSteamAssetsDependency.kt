@@ -33,6 +33,7 @@ object BionicSteamAssetsDependency : LaunchDependency {
     private const val BIONIC_STEAM_ARCHIVE = "steam-androidarm64.tzst"
     private const val LSTEAMCLIENT_DLL = "lsteamclient.dll"
     private const val LIBSTEAMCLIENT_SO = "libsteamclient.so"
+    private const val CACERT_PEM = "cacert.pem"
 
     private fun lsteamclientArchiveFor(container: Container): String? = when {
         container.wineVersion.contains("arm64ec") -> "lsteamclient-arm64ec.tzst"
@@ -76,6 +77,7 @@ object BionicSteamAssetsDependency : LaunchDependency {
         val imageFs = ImageFs.find(context)
         val filesDir = imageFs.filesDir
         if (!File(filesDir, STEAM_EXE).exists()) return false
+        if (!File(filesDir, CACERT_PEM).exists()) return false
         if (!libsteamclientSo(imageFs).exists()) return false
         if (lsteamclientArchiveFor(container) != null) {
             if (!system32Dll(imageFs).exists() || !syswow64Dll(imageFs).exists()) return false
@@ -106,6 +108,19 @@ object BionicSteamAssetsDependency : LaunchDependency {
                     parentScope = this@coroutineScope,
                     context = context,
                     fileName = STEAM_EXE,
+                ).await()
+            }
+        }
+
+        val cacertCache = File(filesDir, CACERT_PEM)
+        if (!withContext(Dispatchers.IO) { cacertCache.exists() }) {
+            callbacks.setLoadingMessage("Downloading $CACERT_PEM")
+            withContext(Dispatchers.IO) {
+                SteamService.downloadFile(
+                    onDownloadProgress = { callbacks.setLoadingProgress(it) },
+                    parentScope = this@coroutineScope,
+                    context = context,
+                    fileName = CACERT_PEM,
                 ).await()
             }
         }

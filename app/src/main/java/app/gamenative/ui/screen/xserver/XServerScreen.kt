@@ -4051,7 +4051,7 @@ private fun unpackExecutableFile(
 
         output = StringBuilder()
 
-        if (!container.isLaunchRealSteam && !container.isLaunchBionicSteam) {
+        if (!container.isLaunchRealSteam) {
             val exePaths = if (container.isUnpackFiles) {
                 val scanned = ContainerUtils.scanExecutablesInADrive(container.drives)
                 val filtered = ContainerUtils.filterExesForUnpacking(scanned)
@@ -4956,12 +4956,27 @@ private fun extractSteamFiles(
     )
 
     if (container.isLaunchBionicSteam) {
-        // Bionic mode doesn't need the full real-Steam tree from steam.tzst —
-        // libsteamclient.so on the Linux side does all the heavy lifting. We
-        // extract experimental-drm.tzst (steam_api.dll / steam_api64.dll etc.)
-        // and overlay our own steam.exe.
         val steamDir = steamExe.parentFile ?: return
         steamDir.mkdirs()
+        val staleSessionFiles = listOf(
+            File(steamDir, "config/config.vdf"),
+            File(steamDir, "config/loginusers.vdf"),
+            File(steamDir, "local.vdf"),
+            File(
+                imageFs.rootDir,
+                ImageFs.WINEPREFIX + "/drive_c/users/${ImageFs.USER}/AppData/Local/Steam/local.vdf",
+            ),
+            File(imageFs.rootDir, "/opt/apps/steam-token.exe"),
+        )
+        for (f in staleSessionFiles) {
+            try {
+                if (Files.deleteIfExists(f.toPath())) {
+                    Timber.i("Deleted stale session file ${f.absolutePath} (bionic mode)")
+                }
+            } catch (e: IOException) {
+                Timber.w(e, "Failed to delete ${f.absolutePath}")
+            }
+        }
 
         val drmArchive = File(imageFs.getFilesDir(), "experimental-drm-20260116.tzst")
         if (drmArchive.exists()) {
@@ -4987,6 +5002,26 @@ private fun extractSteamFiles(
             }
         } catch (e: IOException) {
             Timber.e(e, "Failed to copy cached steam.exe")
+        }
+
+        // Steam DRM stub reads HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser
+        // (DWORD = SteamID3 account ID). Without this it fails with
+        // "Application Load Error 3:0000065432". steam_helper does not write
+        // ActiveUser without a real IPC login, so we write it ourselves.
+        try {
+            val accountId = SteamService.userSteamId?.accountID?.toInt() ?: 0
+            val userRegFile = File(container.rootDir, ".wine/user.reg")
+            WineRegistryEditor(userRegFile).use { editor ->
+                editor.setCreateKeyIfNotExist(true)
+                editor.setDwordValue(
+                    "Software\\Valve\\Steam\\ActiveProcess",
+                    "ActiveUser",
+                    accountId,
+                )
+            }
+            Timber.i("Set HKCU\\Software\\Valve\\Steam\\ActiveProcess\\ActiveUser=$accountId (bionic mode)")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to write ActiveUser registry value")
         }
         return
     }

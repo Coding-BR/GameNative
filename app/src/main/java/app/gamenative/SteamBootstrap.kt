@@ -1,5 +1,6 @@
 package app.gamenative
 
+import android.content.Context
 import android.util.Log
 
 /**
@@ -33,6 +34,7 @@ object SteamBootstrap {
 
     @JvmStatic
     private external fun nativeInit(
+        context: Context,
         libPath: String,
         home: String,
         steam3Master: String,
@@ -78,6 +80,7 @@ object SteamBootstrap {
      * @return 0 on success, negative status code on failure (see steam_bootstrap.c).
      */
     fun start(
+        context: Context,
         libsteamclientPath: String,
         wineSteamRootLinux: String,
         steam3Master: String,
@@ -100,6 +103,7 @@ object SteamBootstrap {
 
         val rc = try {
             nativeInit(
+                context.applicationContext,
                 libsteamclientPath,
                 wineSteamRootLinux,
                 steam3Master,

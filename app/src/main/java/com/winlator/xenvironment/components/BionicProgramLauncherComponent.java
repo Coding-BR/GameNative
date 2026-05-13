@@ -512,6 +512,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             envVars.put("SteamAppUser", username);
         }
         envVars.put("SteamClientLaunch", "1");
+        envVars.put("SteamEnv", "1");
         envVars.put("SteamPath", "C:\\Program Files (x86)\\Steam");
 
         // Override the SteamGameId=0 set above with the actual Steam appid for
@@ -608,6 +609,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         try {
             int rc = app.gamenative.SteamBootstrap.INSTANCE.start(
+                    environment.getContext(),
                     libPath,
                     nativeHome,
                     envVars.get("Steam3Master"),

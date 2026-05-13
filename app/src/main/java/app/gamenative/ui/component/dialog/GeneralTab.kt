@@ -372,19 +372,21 @@ fun GeneralTabContent(
                 }
             },
         )
-        SettingsSwitch(
-            colors = settingsTileColorsAlt(),
-            title = { Text(text = stringResource(R.string.launch_bionic_steam)) },
-            subtitle = { Text(text = stringResource(R.string.launch_bionic_steam_description)) },
-            state = config.launchBionicSteam,
-            onCheckedChange = {
-                state.config.value = if (it) {
-                    config.copy(launchBionicSteam = true, launchRealSteam = false)
-                } else {
-                    config.copy(launchBionicSteam = false)
-                }
-            },
-        )
+        if (config.containerVariant.equals(Container.BIONIC, ignoreCase = true)) {
+            SettingsSwitch(
+                colors = settingsTileColorsAlt(),
+                title = { Text(text = stringResource(R.string.launch_bionic_steam)) },
+                subtitle = { Text(text = stringResource(R.string.launch_bionic_steam_description)) },
+                state = config.launchBionicSteam,
+                onCheckedChange = {
+                    state.config.value = if (it) {
+                        config.copy(launchBionicSteam = true, launchRealSteam = false)
+                    } else {
+                        config.copy(launchBionicSteam = false)
+                    }
+                },
+            )
+        }
         val steamTypeItems = listOf("Normal", "Light", "Ultra Light")
         val currentSteamTypeIndex = when (config.steamType.lowercase()) {
             Container.STEAM_TYPE_LIGHT -> 1
