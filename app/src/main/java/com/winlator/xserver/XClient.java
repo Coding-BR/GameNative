@@ -4,6 +4,7 @@ import androidx.collection.ArrayMap;
 
 import com.winlator.xconnector.XInputStream;
 import com.winlator.xconnector.XOutputStream;
+import com.winlator.xconnector.XStreamLock;
 import com.winlator.xserver.events.Event;
 import com.winlator.xserver.extensions.XInput2Extension;
 
@@ -51,7 +52,7 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
     }
 
     public void sendEvent(Event event) {
-        try {
+        try (XStreamLock ignored = outputStream.lock()) {
             event.send(sequenceNumber, outputStream);
         }
         catch (IOException e) {
@@ -103,7 +104,8 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
         }
 
         XInput2Extension xi2 = xServer.getExtension(XInput2Extension.MAJOR_OPCODE);
-        xi2.onClientDisconnected(this);
+        if (xi2 != null)
+            xi2.onClientDisconnected(this);
     }
 
     public void generateSequenceNumber() {

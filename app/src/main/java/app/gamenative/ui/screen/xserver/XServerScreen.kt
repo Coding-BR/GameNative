@@ -16,6 +16,7 @@ import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.hardware.display.DisplayManager
 import android.hardware.input.InputManager
 import android.view.InputDevice
 import androidx.activity.ComponentActivity
@@ -42,6 +43,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import app.gamenative.MainActivity
@@ -91,6 +93,8 @@ import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGService
 import app.gamenative.ui.component.QuickMenu
 import app.gamenative.ui.component.QuickMenuAction
+import app.gamenative.ui.component.parseBooleanExtra
+import app.gamenative.ui.component.parsePositiveFpsLimit
 import app.gamenative.ui.data.PerformanceHudConfig
 import app.gamenative.ui.data.PerformanceHudSize
 import app.gamenative.ui.data.XServerState
@@ -98,9 +102,12 @@ import app.gamenative.ui.widget.PerformanceHudView
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
+import app.gamenative.utils.LsfgQuickMenuHelper
+import app.gamenative.utils.ManifestComponentHelper
 import app.gamenative.utils.PreInstallSteps
 import app.gamenative.utils.SteamTokenLogin
 import app.gamenative.utils.SteamUtils
+import app.gamenative.utils.WineProcessSnapshotHelper
 import com.posthog.PostHog
 import com.winlator.alsaserver.ALSAClient
 import com.winlator.container.Container
@@ -161,6 +168,7 @@ import com.winlator.xserver.ScreenInfo
 import com.winlator.xserver.Window
 import com.winlator.xserver.WindowManager
 import com.winlator.xserver.XServer
+import com.winlator.xserver.extensions.PresentExtension
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -183,6 +191,7 @@ import java.util.Arrays
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.name
+import kotlin.math.roundToInt
 import kotlin.text.lowercase
 import com.winlator.PrefManager as WinlatorPrefManager
 
@@ -197,6 +206,38 @@ private const val EXIT_PROCESS_TIMEOUT_MS = 30_000L
 private const val EXIT_PROCESS_POLL_INTERVAL_MS = 1_000L
 private const val EXIT_PROCESS_RESPONSE_TIMEOUT_MS = 2_000L
 private const val QUICK_MENU_PROCESS_POLL_INTERVAL_MS = 2_000L
+private const val DEFAULT_FPS_LIMITER_MAX_HZ = 60
+private const val DEFAULT_FPS_LIMITER_TARGET_HZ = 60
+private const val FPS_LIMITER_ENABLED_EXTRA = "fpsLimiterEnabled"
+private const val FPS_LIMITER_TARGET_EXTRA = "fpsLimiterTarget"
+
+private fun initialFpsLimiterEnabled(container: Container): Boolean =
+    parseBooleanExtra(container.getExtra(FPS_LIMITER_ENABLED_EXTRA)) ?: true
+
+private fun initialFpsLimiterTarget(container: Container): Int =
+    parsePositiveFpsLimit(container.getExtra(FPS_LIMITER_TARGET_EXTRA))
+        ?: DEFAULT_FPS_LIMITER_TARGET_HZ
+
+private fun detectMaxRefreshRateHz(context: Context, attachedView: View?): Int {
+    val display = attachedView?.display
+        ?: context.display
+        ?: ContextCompat.getSystemService(context, DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+
+    val refreshRate = when {
+        display == null -> DEFAULT_FPS_LIMITER_MAX_HZ.toFloat()
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+            val supportedMax = display.supportedModes.maxOfOrNull { it.refreshRate } ?: display.refreshRate
+            if (supportedMax.isFinite() && supportedMax > 0f) supportedMax else display.refreshRate
+        }
+        else -> display.refreshRate
+    }
+
+    return refreshRate
+        .takeIf { it.isFinite() && it > 0f }
+        ?.roundToInt()
+        ?.coerceAtLeast(5)
+        ?: DEFAULT_FPS_LIMITER_MAX_HZ
+}
 
 private data class XServerViewReleaseBinding(
     val xServerView: XServerView,
@@ -244,48 +285,6 @@ private fun buildEssentialProcessAllowlist(): Set<String> {
     return (essentialServices + CORE_WINE_PROCESSES).toSet()
 }
 
-private suspend fun requestWineProcessSnapshot(winHandler: WinHandler): List<ProcessInfo>? {
-    val previousListener = winHandler.getOnGetProcessInfoListener()
-    val lock = Any()
-    var currentList = mutableListOf<ProcessInfo>()
-    var expectedCount = 0
-    val deferred = CompletableDeferred<List<ProcessInfo>?>()
-
-    val listener = OnGetProcessInfoListener { index, count, processInfo ->
-        previousListener?.onGetProcessInfo(index, count, processInfo)
-        synchronized(lock) {
-            if (count == 0 && processInfo == null) {
-                if (!deferred.isCompleted) deferred.complete(emptyList())
-                return@synchronized
-            }
-            if (index == 0) {
-                currentList = mutableListOf()
-                expectedCount = count
-                if (count == 0 && !deferred.isCompleted) {
-                    deferred.complete(emptyList())
-                    return@synchronized
-                }
-            }
-            if (processInfo != null) {
-                currentList.add(processInfo)
-            }
-            if (currentList.size >= expectedCount && !deferred.isCompleted) {
-                deferred.complete(currentList.toList())
-            }
-        }
-    }
-
-    return try {
-        winHandler.setOnGetProcessInfoListener(listener)
-        winHandler.listProcesses()
-        withTimeoutOrNull(EXIT_PROCESS_RESPONSE_TIMEOUT_MS) {
-            deferred.await()
-        }
-    } finally {
-        winHandler.setOnGetProcessInfoListener(previousListener)
-    }
-}
-
 // TODO logs in composables are 'unstable' which can cause recomposition (performance issues)
 
 @Composable
@@ -305,6 +304,7 @@ fun XServerScreen(
     Timber.i("Starting up XServerScreen")
     val context = LocalContext.current
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
     val imm = remember(context) {
         context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     }
@@ -416,6 +416,7 @@ fun XServerScreen(
     var showElementEditor by remember { mutableStateOf(false) }
     var elementToEdit by remember { mutableStateOf<com.winlator.inputcontrols.ControlElement?>(null) }
     var showPhysicalControllerDialog by remember { mutableStateOf(false) }
+    var showPlayingBlockedDialog by rememberSaveable { mutableStateOf(false) }
     var showTouchGestureDialog by remember { mutableStateOf(false) }
     var isTouchscreenModeActive by remember { mutableStateOf(container.isTouchscreenMode) }
     var currentGestureConfig by remember {
@@ -436,6 +437,23 @@ fun XServerScreen(
     var hasInternalTouchpad by remember { mutableStateOf(false) }
     var hasUpdatedScreenGamepad by remember { mutableStateOf(false) }
     var isPerformanceHudEnabled by remember { mutableStateOf(PrefManager.showFps) }
+    val shouldTrackDisplayedFrames = remember { AtomicBoolean(false) }
+    var detectedMaxRefreshRateHz by remember { mutableIntStateOf(detectMaxRefreshRateHz(context, null)) }
+    var fpsLimiterEnabled by rememberSaveable(container.id) { mutableStateOf(initialFpsLimiterEnabled(container)) }
+    var fpsLimiterTarget by rememberSaveable(container.id) { mutableIntStateOf(initialFpsLimiterTarget(container)) }
+
+    // LSFG tab in QuickMenu only visible when enabled in container settings
+    val isLsfgAvailable = LsfgQuickMenuHelper.isAvailable(container)
+    val initialLsfgSettings = remember(container.id) { LsfgQuickMenuHelper.readSettings(container) }
+    var lsfgMultiplier by rememberSaveable(container.id) { mutableIntStateOf(initialLsfgSettings.multiplier) }
+    var lsfgFlowScale by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.flowScale) }
+    var lsfgPerformanceMode by rememberSaveable(container.id) { mutableStateOf(initialLsfgSettings.performanceMode) }
+
+    fun persistFpsLimiterState() {
+        container.putExtra(FPS_LIMITER_ENABLED_EXTRA, fpsLimiterEnabled)
+        container.putExtra(FPS_LIMITER_TARGET_EXTRA, fpsLimiterTarget)
+        container.saveData()
+    }
 
     fun loadPerformanceHudConfig(): PerformanceHudConfig {
         return PerformanceHudConfig(
@@ -502,6 +520,66 @@ fun XServerScreen(
         xServerView?.renderer?.let { renderer ->
             applyScreenEffectsConfig(renderer, loadScreenEffectsConfig(container))
         }
+    }
+
+    fun applyFpsLimiterToEngines(limit: Int) {
+        xServerView?.setFrameRateLimit(limit)
+        xServerView?.getxServer()
+            ?.getExtension<PresentExtension>(PresentExtension.MAJOR_OPCODE.toInt())
+            ?.setFrameRateLimit(limit)
+    }
+
+    fun effectiveFpsLimit(): Int =
+        if (isLsfgAvailable && lsfgMultiplier >= 2) 0
+        else if (fpsLimiterEnabled) fpsLimiterTarget
+        else 0
+
+    fun applyFpsLimiterEnabled(enabled: Boolean) {
+        fpsLimiterEnabled = enabled
+        applyFpsLimiterToEngines(effectiveFpsLimit())
+        persistFpsLimiterState()
+    }
+
+    fun applyFpsLimiterTarget(target: Int) {
+        val sanitized = target.coerceAtLeast(5).coerceAtMost(detectedMaxRefreshRateHz)
+        fpsLimiterTarget = sanitized
+        if (fpsLimiterEnabled) {
+            applyFpsLimiterToEngines(effectiveFpsLimit())
+        }
+        persistFpsLimiterState()
+    }
+
+    fun applyLsfgSettings() {
+        LsfgQuickMenuHelper.applySettings(
+            container,
+            LsfgQuickMenuHelper.Settings(lsfgMultiplier, lsfgFlowScale, lsfgPerformanceMode),
+        )
+    }
+
+    fun applyLsfgMultiplier(mult: Int) {
+        lsfgMultiplier = LsfgQuickMenuHelper.sanitizeMultiplier(mult)
+        applyLsfgSettings()
+        applyFpsLimiterToEngines(effectiveFpsLimit())
+    }
+
+    fun applyLsfgFlowScale(scale: Float) {
+        lsfgFlowScale = LsfgQuickMenuHelper.sanitizeFlowScale(scale)
+        applyLsfgSettings()
+    }
+
+    fun applyLsfgPerformanceMode(enabled: Boolean) {
+        lsfgPerformanceMode = enabled
+        applyLsfgSettings()
+    }
+
+    LaunchedEffect(xServerView) {
+        val detectedMax = detectMaxRefreshRateHz(context, xServerView)
+        detectedMaxRefreshRateHz = detectedMax
+        val clampedTarget = fpsLimiterTarget.coerceAtMost(detectedMax).coerceAtLeast(5)
+        if (clampedTarget != fpsLimiterTarget) {
+            fpsLimiterTarget = clampedTarget
+        }
+        applyFpsLimiterToEngines(effectiveFpsLimit())
     }
 
     fun restorePerformanceHudPosition() {
@@ -575,7 +653,9 @@ fun XServerScreen(
         val hud = PerformanceHudView(
             context = context,
             fpsProvider = {
-                frameRating?.currentFPS ?: 0f
+                val raw = frameRating?.currentFPS ?: 0f
+                val mult = if (isLsfgAvailable && lsfgMultiplier >= 2) lsfgMultiplier else 1
+                raw * mult
             },
             initialConfig = performanceHudConfig,
             initialCompactMode = PrefManager.performanceHudCompactMode,
@@ -857,24 +937,10 @@ fun XServerScreen(
             return@LaunchedEffect
         }
 
-        val winHandler = xServerView?.getxServer()?.winHandler
-        if (winHandler == null) {
-            quickMenuWineProcesses = emptyList()
-            quickMenuWineProcessesLoading = false
-            return@LaunchedEffect
-        }
-
         quickMenuWineProcessesLoading = true
         while (showQuickMenu && quickMenuToolsVisible) {
-            val snapshot = withContext(Dispatchers.IO) {
-                requestWineProcessSnapshot(winHandler)
-                    ?.sortedWith(
-                        compareByDescending<ProcessInfo> { normalizeProcessName(it.name) !in buildEssentialProcessAllowlist() }
-                            .thenByDescending { it.memoryUsage },
-                    )
-            }
-            if (snapshot != null) {
-                quickMenuWineProcesses = snapshot
+            quickMenuWineProcesses = withContext(Dispatchers.IO) {
+                WineProcessSnapshotHelper.readFromProc()
             }
             quickMenuWineProcessesLoading = false
             delay(QUICK_MENU_PROCESS_POLL_INTERVAL_MS)
@@ -1318,6 +1384,10 @@ fun XServerScreen(
             Timber.i("onForceCloseApp")
             exit(xServerView!!.getxServer().winHandler, frameRating, currentAppInfo, container, appId, onExit, navigateBack)
         }
+        val onPlayingBlocked: (SteamEvent.PlayingBlocked) -> Unit = {
+            Timber.i("onPlayingBlocked")
+            showPlayingBlockedDialog = true
+        }
         val debugCallback = Callback<String> { outputLine ->
             Timber.i(outputLine ?: "")
         }
@@ -1327,6 +1397,7 @@ fun XServerScreen(
         PluviaApp.events.on<AndroidEvent.MotionEvent, Boolean>(onMotionEvent)
         PluviaApp.events.on<AndroidEvent.GuestProgramTerminated, Unit>(onGuestProgramTerminated)
         PluviaApp.events.on<SteamEvent.ForceCloseApp, Unit>(onForceCloseApp)
+        PluviaApp.events.on<SteamEvent.PlayingBlocked, Unit>(onPlayingBlocked)
         ProcessHelper.addDebugCallback(debugCallback)
 
         onDispose {
@@ -1335,6 +1406,7 @@ fun XServerScreen(
             PluviaApp.events.off<AndroidEvent.MotionEvent, Boolean>(onMotionEvent)
             PluviaApp.events.off<AndroidEvent.GuestProgramTerminated, Unit>(onGuestProgramTerminated)
             PluviaApp.events.off<SteamEvent.ForceCloseApp, Unit>(onForceCloseApp)
+            PluviaApp.events.off<SteamEvent.PlayingBlocked, Unit>(onPlayingBlocked)
             ProcessHelper.removeDebugCallback(debugCallback)
         }
     }
@@ -1512,18 +1584,27 @@ fun XServerScreen(
             }
             performanceHudHost = frameLayout
             val appId = appId
+            val usrGlibc: Boolean = container.getContainerVariant().equals(Container.GLIBC, ignoreCase = true)
             val existingXServer =
                 PluviaApp.xEnvironment
                     ?.getComponent<XServerComponent>(XServerComponent::class.java)
                     ?.xServer
-            val xServerToUse = existingXServer ?: XServer(ScreenInfo(xServerState.value.screenSize))
+            val xServerToUse = existingXServer ?: XServer(ScreenInfo(xServerState.value.screenSize), usrGlibc)
             val xServerView = XServerView(
                 context,
                 xServerToUse,
             ).apply {
                 xServerView = this
+                setFrameRateLimit(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
                 val renderer = this.renderer
-                renderer.isCursorVisible = false
+                renderer.setCursorVisible(false)
+                renderer.setOnFrameRenderedListener {
+                    if (shouldTrackDisplayedFrames.get()) {
+                        (context as? Activity)?.runOnUiThread {
+                            frameRating?.update()
+                        }
+                    }
+                }
                 getxServer().renderer = renderer
                 PluviaApp.touchpadView = TouchpadView(context, getxServer(), PrefManager.getBoolean("capture_pointer_on_external_mouse", true))
                 frameLayout.addView(PluviaApp.touchpadView)
@@ -1666,6 +1747,11 @@ fun XServerScreen(
                             }
                             if (frameRatingWindowId == -1 && window.isApplicationWindow()) {
                                 refreshFrameRatingTracking("content-update")
+                            }
+                            if (window.id == frameRatingWindowId) {
+                                (context as? Activity)?.runOnUiThread {
+                                    frameRating?.update()
+                                }
                             }
                         }
 
@@ -2113,10 +2199,12 @@ fun XServerScreen(
             gameRoot = null
             removePerformanceHud()
             performanceHudHost = null
+            shouldTrackDisplayedFrames.set(false)
 
             val releaseBinding = view.tag as? XServerViewReleaseBinding
             releaseBinding?.let { binding ->
                 // Remove the WindowManager listener associated with the released AndroidView.
+                binding.xServerView.renderer.setOnFrameRenderedListener(null)
                 binding.xServerView.getxServer().windowManager.removeOnWindowModificationListener(binding.windowModificationListener)
                 if (PluviaApp.xServerView === binding.xServerView) {
                     PluviaApp.xServerView = null
@@ -2276,13 +2364,28 @@ fun XServerScreen(
             onItemSelected = onQuickMenuItemSelected,
             renderer = xServerView?.renderer,
             container = container,
-            winHandler = xServerView?.getxServer()?.winHandler,
             wineProcesses = quickMenuWineProcesses,
             isWineProcessesLoading = quickMenuWineProcessesLoading,
             onToolsVisibilityChanged = { quickMenuToolsVisible = it },
+            onEndWineProcess = { process ->
+                val killed = runCatching {
+                    ProcessHelper.killProcess(process.pid)
+                }.onFailure { error ->
+                    Timber.w(error, "Failed to kill Wine process pid=%d", process.pid)
+                }.isSuccess
+
+                if (killed) {
+                    quickMenuWineProcesses = quickMenuWineProcesses.filterNot { it.pid == process.pid }
+                }
+            },
             isPerformanceHudEnabled = isPerformanceHudEnabled,
             performanceHudConfig = performanceHudConfig,
+            fpsLimiterEnabled = fpsLimiterEnabled,
+            fpsLimiterTarget = fpsLimiterTarget,
+            fpsLimiterMax = detectedMaxRefreshRateHz,
             onPerformanceHudConfigChanged = ::applyPerformanceHudConfig,
+            onFpsLimiterEnabledChanged = ::applyFpsLimiterEnabled,
+            onFpsLimiterChanged = ::applyFpsLimiterTarget,
             hasPhysicalController = hasPhysicalController,
             isTouchscreenModeActive = isTouchscreenModeActive,
             onTouchGestureSettingsClick = { showTouchGestureDialog = true },
@@ -2291,6 +2394,14 @@ fun XServerScreen(
                 if (isTouchscreenModeActive) add(QuickMenuAction.TOUCHSCREEN_MODE)
                 if (isDisableMouseInput) add(QuickMenuAction.DISABLE_MOUSE)
             },
+            // LSFG hot-reload (tab only visible when enabled in container settings)
+            isLsfgAvailable = isLsfgAvailable,
+            lsfgMultiplier = lsfgMultiplier,
+            lsfgFlowScale = lsfgFlowScale,
+            lsfgPerformanceMode = lsfgPerformanceMode,
+            onLsfgMultiplierChanged = ::applyLsfgMultiplier,
+            onLsfgFlowScaleChanged = ::applyLsfgFlowScale,
+            onLsfgPerformanceModeChanged = ::applyLsfgPerformanceMode,
         )
 
         if (manualResumeMode && PluviaApp.isOverlayPaused && !showQuickMenu && !keepPausedForEditor) {
@@ -2352,6 +2463,33 @@ fun XServerScreen(
                 container.saveData()
                 PluviaApp.touchpadView?.setGestureConfig(newConfig)
                 showTouchGestureDialog = false
+            },
+        )
+    }
+
+    if (showPlayingBlockedDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {},
+            title = { Text(text = stringResource(R.string.main_app_running_title)) },
+            text = { Text(text = stringResource(R.string.main_app_running_message, context.getString(R.string.main_app_running_unknown_game))) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPlayingBlockedDialog = false
+                    SteamService.clearPlayingConflict()
+                    scope.launch {
+                        SteamService.kickPlayingSession(onlyGame = true)
+                    }
+                }) {
+                    Text(text = stringResource(R.string.main_play_anyway))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPlayingBlockedDialog = false
+                    exit(xServerView?.getxServer()?.winHandler, frameRating, currentAppInfo, container, appId, onExit, navigateBack)
+                }) {
+                    Text(text = stringResource(R.string.cancel))
+                }
             },
         )
     }
@@ -2941,6 +3079,8 @@ private fun setupXEnvironment(
         guestProgramLauncherComponent.setSteamType(container.getSteamType())
 
         envVars.putAll(container.envVars)
+        envVars.remove("DXVK_FRAME_RATE")
+        envVars.remove("VKD3D_FRAME_RATE")
         if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1")
         val graphicsDriverConfig = KeyValueSet(container.getGraphicsDriverConfig())
         if (graphicsDriverConfig.get("version").lowercase(Locale.getDefault()).contains("gen8")) {
@@ -3314,7 +3454,7 @@ private fun getWineStartCommand(
         // Get Epic launch parameters
         Timber.tag("XServerScreen").d("Building Epic launch parameters for ${game.appName}...")
         val runArguments: List<String> = runBlocking {
-            val result = EpicService.buildLaunchParameters(context, game, false)
+            val result = EpicService.buildLaunchParameters(context, container, game, false)
             if (result.isFailure) {
                 Timber.tag("XServerScreen").e(result.exceptionOrNull(), "Failed to build Epic launch parameters")
             }
@@ -4231,7 +4371,16 @@ private fun extractDXWrapperFiles(
             val profile: ContentProfile? = contentsManager.getProfileByEntryName(dxwrapper)
             // Determine graphics driver to choose DXVK version
             val vortekLike = container.graphicsDriver == "vortek" || container.graphicsDriver == "adreno" || container.graphicsDriver == "sd-8-elite"
-            val dxvkVersionForVkd3d = if (vortekLike && GPUHelper.vkGetApiVersionSafe() < GPUHelper.vkMakeVersion(1, 3, 0)) "1.10.3" else "2.4.1"
+            val dxvkMinVersion = "2.6.1-gplasync"
+            val dxwrapperConfig = DXVKHelper.parseConfig(container.dxWrapperConfig)
+            val dxvkVersion = dxwrapperConfig.get("version", dxvkMinVersion)
+            val dxvkVersionForVkd3d = if (vortekLike && GPUHelper.vkGetApiVersionSafe() < GPUHelper.vkMakeVersion(1, 3, 0)) {
+                "1.10.3"
+            } else if (ManifestComponentHelper.isAtLeastVersion(dxvkVersion, 2, 1, 0)) {
+                dxvkVersion
+            } else {
+                dxvkMinVersion
+            }
             Timber.i("Extracting VKD3D DX version for dxwrapper: $dxvkVersionForVkd3d")
             TarCompressorUtils.extract(
                 TarCompressorUtils.Type.ZSTD, context.assets,
