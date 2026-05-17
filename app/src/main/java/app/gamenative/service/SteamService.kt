@@ -39,6 +39,7 @@ import app.gamenative.db.dao.ChangeNumbersDao
 import app.gamenative.db.dao.EncryptedAppTicketDao
 import app.gamenative.db.dao.FileChangeListsDao
 import app.gamenative.db.dao.SteamAppDao
+import app.gamenative.db.dao.SteamFileHashCacheDao
 import app.gamenative.db.dao.SteamLicenseDao
 import app.gamenative.enums.LoginResult
 import app.gamenative.enums.Marker
@@ -214,6 +215,9 @@ class SteamService : Service(), IChallengeUrlChanged {
 
     @Inject
     lateinit var fileChangeListsDao: FileChangeListsDao
+
+    @Inject
+    lateinit var steamFileHashCacheDao: SteamFileHashCacheDao
 
     @Inject
     lateinit var cachedLicenseDao: CachedLicenseDao
@@ -1320,6 +1324,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                         appInfoDao.deleteApp(appId)
                         changeNumbersDao.deleteByAppId(appId)
                         fileChangeListsDao.deleteByAppId(appId)
+                        steamFileHashCacheDao.deleteByAppId(appId)
                         downloadingAppInfoDao.deleteApp(appId)
                         appDao.clearWorkshopState(appId)
 
@@ -1328,6 +1333,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                             appInfoDao.deleteApp(dlcAppId)
                             changeNumbersDao.deleteByAppId(dlcAppId)
                             fileChangeListsDao.deleteByAppId(dlcAppId)
+                            steamFileHashCacheDao.deleteByAppId(dlcAppId)
                         }
                     }
                 }
