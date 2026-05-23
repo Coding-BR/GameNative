@@ -1,9 +1,7 @@
 // JNI bridge for VulkanRenderer.
 //
 // Adapted from Winlator-Ludashi (StevenMXZ/Winlator-Ludashi). The upstream
-// version supports loading a custom Adreno driver via libadrenotools; Pluvia
-// does not vendor adrenotools, so we always pass a null driver handle and
-// the Vulkan loader falls back to the stock system driver.
+// version supports loading a custom Adreno driver via libadrenotools
 #include <jni.h>
 #include <android/native_window_jni.h>
 #include <dlfcn.h>

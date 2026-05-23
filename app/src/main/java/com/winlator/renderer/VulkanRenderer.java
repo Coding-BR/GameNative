@@ -27,13 +27,12 @@ import java.util.ArrayList;
  * (StevenMXZ/Winlator-Ludashi). Sends DXVK/Mesa AHardwareBuffer frames
  * straight into VkImages via VK_ANDROID_external_memory_android_hardware_buffer,
  * skipping the GL texture copy that {@link GLRenderer} performs.
- *
- * Pluvia keeps the legacy {@link GLRenderer} alongside this class for the
- * VirGL path; selection happens at XServerView construction.
- *
+
  * Differences from upstream:
  *   - HUD integration uses Pluvia's {@link FrameRating} widget (the scanout-mode
  *     "isNative"/"onFrame" hooks from Ludashi's WinlatorHUD are stubbed).
+ *   - Adrenotools custom-driver loading is stubbed in the JNI layer; the
+ *     {@code driverPath}/{@code libraryName} args are passed but ignored.
  *   - Adrenotools custom-driver loading is stubbed in the JNI layer; the
  *     {@code driverPath}/{@code libraryName} args are passed but ignored.
  */
