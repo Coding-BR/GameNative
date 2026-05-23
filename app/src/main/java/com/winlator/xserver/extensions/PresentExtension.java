@@ -2,6 +2,7 @@ package com.winlator.xserver.extensions;
 
 import static com.winlator.xserver.XClientRequestHandler.RESPONSE_CODE_SUCCESS;
 
+import android.os.Process;
 import android.util.SparseArray;
 
 import com.winlator.renderer.GPUImage;
@@ -28,14 +29,16 @@ import com.winlator.xserver.events.PresentIdleNotify;
 
 import java.io.IOException;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 public class PresentExtension implements Extension {
     public static final byte MAJOR_OPCODE = -103;
     private static final int FAKE_INTERVAL_DEFAULT_US = 1_000_000 / 60;
+    // Busy-wait the final fraction of a ms for sub-ms pacing precision (mirrors DXVK's
+    // frame limiter, which sleeps most of the interval then spins the tail).
+    private static final long BUSY_WAIT_THRESHOLD_NS = 500_000L; // 500us
     public enum Kind {PIXMAP, MSC_NOTIFY}
     public enum Mode {COPY, FLIP, SKIP}
     private final SparseArray<Event> events = new SparseArray<>();
@@ -43,43 +46,122 @@ public class PresentExtension implements Extension {
     private byte firstEventId = 0;
     private byte firstErrorId = 0;
 
-    // FPS limiter: delays PresentIdleNotify/PresentCompleteNotify to create
-    // back-pressure on the game's render loop. Without this the game ignores the
-    // Android-side display throttle and renders at full speed regardless.
-    private volatile int frameRateLimit = 0;
+    // FPS limiter: paces the game's render loop via delayed PresentIdleNotify /
+    // PresentCompleteNotify back-pressure. Without this the game ignores any Android-side
+    // display throttle and renders at full speed regardless.
+    //
+    // Pacing runs on a dedicated high-priority thread that parkNanos + busy-waits to a
+    // precise target time, rather than via ScheduledExecutorService. This matters because
+    // UE/Unity frame-rate smoothers latch onto the observed Present cadence — feeding them
+    // a jittery or late cadence wedges them into the wrong target frame rate, and they
+    // don't recover even after the cap changes. We also report the *actual* fire time as
+    // ust (not the planned time) so the cadence the client measures matches the cadence
+    // we're actually delivering.
     private volatile long targetIntervalUs = 0L;
-    private long lastScheduledUst = 0L; // guarded by scheduleLock
-    private final Object scheduleLock = new Object();
-    // Incremented on every setFrameRateLimit call so in-flight lambdas can detect
-    // that the limit changed and fire immediately instead of stalling the game.
-    private final AtomicInteger limitGeneration = new AtomicInteger(0);
-    private final ScheduledExecutorService presentScheduler =
-        Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "PresentExt-FpsLimiter");
-            t.setDaemon(true);
-            return t;
-        });
+    // Incremented on every setFrameRateLimit call so the pacing thread can detect that
+    // the limit changed and either fire immediately or re-pace at the new rate.
+    private final AtomicLong limitGeneration = new AtomicLong(0L);
+    private final LinkedBlockingQueue<PendingPresent> pacingQueue = new LinkedBlockingQueue<>();
+    private final Thread pacingThread;
+    private volatile boolean pacingShutdown = false;
+
+    public PresentExtension() {
+        pacingThread = new Thread(this::pacingLoop, "PresentExt-FpsLimiter");
+        pacingThread.setDaemon(true);
+        pacingThread.start();
+    }
 
     public void setFrameRateLimit(int limit) {
-        synchronized (scheduleLock) {
-            frameRateLimit = Math.max(0, limit);
-            targetIntervalUs = frameRateLimit > 0 ? 1_000_000L / frameRateLimit : 0L;
-            lastScheduledUst = 0L; // reset pacing watermark on every change
-        }
-        limitGeneration.incrementAndGet(); // invalidate any in-flight scheduled notifies
+        int sanitized = Math.max(0, limit);
+        targetIntervalUs = sanitized > 0 ? 1_000_000L / sanitized : 0L;
+        limitGeneration.incrementAndGet();
+        // Wake the pacing thread so any in-flight park reconsiders the new limit immediately
+        // instead of stalling the game at the old cadence.
+        LockSupport.unpark(pacingThread);
     }
 
     public void close() {
-        presentScheduler.shutdownNow();
+        pacingShutdown = true;
+        pacingThread.interrupt();
     }
 
-    private long nextScheduledUst(long nowUst) {
-        synchronized (scheduleLock) {
-            // Use the later of (last watermark + interval) or now so that already-late
-            // frames are not penalised by an extra full interval of delay.
-            long next = Math.max(lastScheduledUst + targetIntervalUs, nowUst);
-            lastScheduledUst = next;
-            return next;
+    private static class PendingPresent {
+        final Window window;
+        final Pixmap pixmap;
+        final int serial;
+        final int idleFence;
+        final long enqueueUst;
+        final long generation;
+
+        PendingPresent(Window window, Pixmap pixmap, int serial, int idleFence,
+                       long enqueueUst, long generation) {
+            this.window = window;
+            this.pixmap = pixmap;
+            this.serial = serial;
+            this.idleFence = idleFence;
+            this.enqueueUst = enqueueUst;
+            this.generation = generation;
+        }
+    }
+
+    private void pacingLoop() {
+        try {
+            // URGENT_DISPLAY (-8) — the same priority Android uses for SurfaceFlinger.
+            // Reduces scheduler jitter that would otherwise show up as bad frame pacing.
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY);
+        } catch (Throwable ignored) {
+            // Not available in plain-JVM unit tests.
+        }
+
+        long lastFireUst = 0L;
+        // Monotonic msc — strictly +1 per fire. Avoids the duplicate-MSC pathology that
+        // the old "msc = ust / 16666us" formula produced at caps above 60Hz (when
+        // targetIntervalUs < FAKE_INTERVAL_DEFAULT_US, consecutive frames could land in
+        // the same 16ms bucket and report identical msc, confusing WSI clients).
+        long mscCounter = 0L;
+
+        while (!pacingShutdown) {
+            PendingPresent p;
+            try {
+                p = pacingQueue.take();
+            } catch (InterruptedException e) {
+                if (pacingShutdown) return;
+                continue;
+            }
+
+            long interval = targetIntervalUs;
+            long generationNow = limitGeneration.get();
+            long nowUst = System.nanoTime() / 1000L;
+
+            long fireUst;
+            if (interval <= 0L || p.generation != generationNow) {
+                // Limit went away (or changed while this present was queued) — fire
+                // immediately so the game is not stalled at the old cadence.
+                fireUst = nowUst;
+            } else {
+                long target = Math.max(lastFireUst + interval, p.enqueueUst);
+                long delayNs = (target - nowUst) * 1_000L;
+                if (delayNs > BUSY_WAIT_THRESHOLD_NS) {
+                    LockSupport.parkNanos(delayNs - BUSY_WAIT_THRESHOLD_NS);
+                }
+                // Busy-wait the final fraction for sub-ms precision. Bail out cheaply if
+                // the limit changes (unpark) or we're shutting down.
+                long targetNs = target * 1_000L;
+                while (System.nanoTime() < targetNs) {
+                    if (limitGeneration.get() != generationNow) break;
+                    if (pacingShutdown) return;
+                }
+                fireUst = System.nanoTime() / 1000L;
+            }
+            lastFireUst = fireUst;
+            mscCounter++;
+
+            try {
+                sendIdleNotify(p.window, p.pixmap, p.serial, p.idleFence);
+                sendCompleteNotify(p.window, p.serial, Kind.PIXMAP, Mode.COPY, fireUst, mscCounter);
+            } catch (Throwable ignored) {
+                // Client may have disconnected before the present completed.
+            }
         }
     }
 
@@ -188,53 +270,21 @@ public class PresentExtension implements Extension {
         }
 
         // PresentIdleNotify / PresentCompleteNotify are what actually pace the game's
-        // render loop. Delaying them here creates real back-pressure: the game must wait
-        // for IdleNotify before it can reuse a pixmap buffer, so it will naturally render
-        // no faster than the configured limit regardless of how many swapchain images it has.
-        long targetInterval = this.targetIntervalUs;
-        long nowUst = System.nanoTime() / 1000;
+        // render loop — the game blocks waiting for IdleNotify before it can reuse a
+        // pixmap buffer, so delaying them creates real back-pressure.
+        long interval = this.targetIntervalUs;
+        long nowUst = System.nanoTime() / 1000L;
 
-        if (targetInterval <= 0L) {
-            // No limit — fire immediately as before.
+        if (interval <= 0L) {
+            // No limit — fire immediately on the request handler thread.
             long msc = nowUst / FAKE_INTERVAL_DEFAULT_US;
             sendIdleNotify(window, pixmap, serial, idleFence);
             sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.COPY, nowUst, msc);
         } else {
-            final int capturedGen = limitGeneration.get();
-            long scheduledUst = nextScheduledUst(nowUst);
-            long delayUs = scheduledUst - nowUst;
-
-            if (delayUs <= 1_000L) {
-                long msc = scheduledUst / FAKE_INTERVAL_DEFAULT_US;
-                sendIdleNotify(window, pixmap, serial, idleFence);
-                sendCompleteNotify(window, serial, Kind.PIXMAP, Mode.COPY, scheduledUst, msc);
-            } else {
-                final Window finalWindow = window;
-                final Pixmap finalPixmap = pixmap;
-                final int finalSerial = serial;
-                final int finalIdleFence = idleFence;
-                final long finalScheduledUst = scheduledUst;
-                long delayNs = delayUs * 1_000L;
-                presentScheduler.schedule(() -> {
-                    try {
-                        if (limitGeneration.get() == capturedGen) {
-                            long msc = finalScheduledUst / FAKE_INTERVAL_DEFAULT_US;
-                            sendIdleNotify(finalWindow, finalPixmap, finalSerial, finalIdleFence);
-                            sendCompleteNotify(finalWindow, finalSerial, Kind.PIXMAP, Mode.COPY,
-                                    finalScheduledUst, msc);
-                        } else {
-                            // Limit changed while this frame was queued — fire immediately
-                            // so the game is not stalled at the old cadence.
-                            long ustNow = System.nanoTime() / 1000;
-                            sendIdleNotify(finalWindow, finalPixmap, finalSerial, finalIdleFence);
-                            sendCompleteNotify(finalWindow, finalSerial, Kind.PIXMAP, Mode.COPY,
-                                    ustNow, ustNow / FAKE_INTERVAL_DEFAULT_US);
-                        }
-                    } catch (Exception ignored) {
-                        // Client may have disconnected before the scheduled notify fired.
-                    }
-                }, delayNs, TimeUnit.NANOSECONDS);
-            }
+            // Hand off to the pacing thread. Always enqueue (never fire inline here)
+            // so present ordering is preserved across rapid bursts.
+            pacingQueue.offer(new PendingPresent(window, pixmap, serial, idleFence,
+                    nowUst, limitGeneration.get()));
         }
     }
 
