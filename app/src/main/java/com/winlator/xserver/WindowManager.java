@@ -43,6 +43,11 @@ public class WindowManager extends XResourceManager {
         default void onUpdateWindowAttributes(Window window, Bitmask mask) {}
 
         default void onModifyWindowProperty(Window window, Property property) {}
+
+        // Added for VulkanRenderer (ported from Winlator-Ludashi), which uses this
+        // hook to free its per-drawable native handles. Pluvia's WindowManager does
+        // not fire this yet; wiring it up will follow when VulkanRenderer is enabled.
+        default void onDestroyWindow(Window window) {}
     }
 
     public WindowManager(ScreenInfo screenInfo, DrawableManager drawableManager) {

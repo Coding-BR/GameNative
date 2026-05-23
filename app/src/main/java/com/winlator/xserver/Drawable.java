@@ -78,6 +78,20 @@ public class Drawable extends XResource {
         return data;
     }
 
+    // Alias for {@link #getData()}. Added to mirror the API expected by
+    // {@code com.winlator.renderer.VulkanRenderer} (ported from Winlator-Ludashi),
+    // which uses {@code getBuffer()}. Keeping the alias avoids diverging from upstream.
+    public ByteBuffer getBuffer() {
+        return data;
+    }
+
+    // Direct-scanout flag used by VulkanRenderer's native-mode (SurfaceControl
+    // scanout) path. Pluvia does not currently flag any drawables for scanout,
+    // so this always returns false and the scanout path stays dormant.
+    public boolean isDirectScanout() {
+        return false;
+    }
+
     public void setData(ByteBuffer data) {
         this.data = data;
     }

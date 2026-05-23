@@ -5,7 +5,7 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import com.winlator.math.Mathf;
-import com.winlator.renderer.GLRenderer;
+import com.winlator.renderer.VulkanRenderer;
 import com.winlator.winhandler.WinHandler;
 import com.winlator.xserver.extensions.BigReqExtension;
 import com.winlator.xserver.extensions.DRI3Extension;
@@ -40,7 +40,7 @@ public class XServer {
     private boolean isGrabbed = false;
     private XClient grabbingClient = null;
     private SHMSegmentManager shmSegmentManager;
-    private GLRenderer renderer;
+    private VulkanRenderer renderer;
     private WinHandler winHandler;
     private final EnumMap<Lockable, ReentrantLock> locks = new EnumMap<>(Lockable.class);
     private boolean relativeMouseMovement = false;
@@ -79,12 +79,19 @@ public class XServer {
         this.simulateTouchScreen = simulateTouchScreen;
     }
 
-    public GLRenderer getRenderer() {
+    public VulkanRenderer getRenderer() {
         return renderer;
     }
 
-    public void setRenderer(GLRenderer renderer) {
+    public void setRenderer(VulkanRenderer renderer) {
         this.renderer = renderer;
+    }
+
+    // No-op stub used by VulkanRenderer's scanout path (ported from Winlator-Ludashi).
+    // Upstream pauses X rendering once the game's direct-scanout layer takes over;
+    // Pluvia does not yet wire that up, so this is a no-op.
+    public void setRenderingEnabled(boolean enabled) {
+        // intentionally empty
     }
 
     public WinHandler getWinHandler() {

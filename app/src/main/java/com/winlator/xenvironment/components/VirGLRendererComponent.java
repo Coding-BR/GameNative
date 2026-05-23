@@ -56,27 +56,14 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
 
     @Keep
     private long getSharedEGLContext() {
-        Log.d("VirGLRendererComponent", "Calling getSharedEGLContext");
-        if (sharedEGLContextPtr != 0) return sharedEGLContextPtr;
-        final Thread thread = Thread.currentThread();
-        try {
-            GLRenderer renderer = xServer.getRenderer();
-            renderer.xServerView.queueEvent(() -> {
-                sharedEGLContextPtr = getCurrentEGLContextPtr();
-
-                synchronized(thread) {
-                    thread.notify();
-                }
-            });
-            synchronized (thread) {
-                thread.wait();
-            }
-        }
-        catch (Exception e) {
-            return 0;
-        }
-        Log.d("VirGLRendererComponent", "Finished getSharedEGLContext");
-        return sharedEGLContextPtr;
+        // VirGL needs a shared EGL context obtained from the X server's GL renderer.
+        // After the Vulkan port (Winlator-Ludashi), the X server no longer holds a
+        // GLRenderer — XServer.renderer is a VulkanRenderer. VirGL is therefore
+        // dormant on this branch and returns 0 (no shared context). Restoring VirGL
+        // would require running a side-channel GLSurfaceView solely for its EGL
+        // context, then handing the pointer down to the native virglrenderer.
+        Log.w("VirGLRendererComponent", "getSharedEGLContext: VirGL dormant on Vulkan renderer path; returning 0");
+        return 0;
     }
 
     @Override

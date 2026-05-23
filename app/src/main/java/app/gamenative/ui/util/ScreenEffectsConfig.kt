@@ -1,7 +1,7 @@
 package app.gamenative.ui.util
 
 import com.winlator.container.Container
-import com.winlator.renderer.GLRenderer
+import com.winlator.renderer.VulkanRenderer
 import com.winlator.renderer.effects.ColorEffect
 import com.winlator.renderer.effects.CRTEffect
 import com.winlator.renderer.effects.Effect
@@ -98,56 +98,22 @@ fun fsrQuickMenuLevelToStops(level: Int): Float {
     }
 }
 
-fun applyScreenEffectsConfig(renderer: GLRenderer, config: ScreenEffectsConfig) {
-    val composer = renderer.getEffectComposer()
-    val effects = mutableListOf<Effect>()
-
-    when (config.scalingMode) {
-        ScreenEffectsConfig.SCALING_MODE_FSR, ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT -> {
-            val easuEffect = composer.getEffect(FSR1EasuEffect::class.java) ?: FSR1EasuEffect()
-            easuEffect.setPreserveAspect(config.scalingMode == ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT)
-            effects += easuEffect
-            val rcasEffect = composer.getEffect(FSR1RcasEffect::class.java) ?: FSR1RcasEffect()
-            rcasEffect.sharpnessStops = fsrQuickMenuLevelToStops(config.fsrSharpnessLevel)
-            effects += rcasEffect
-        }
-        ScreenEffectsConfig.SCALING_MODE_NONE -> Unit
-        else -> {
-            val scalingEffect = composer.getEffect(ScalingModeEffect::class.java) ?: ScalingModeEffect()
-            scalingEffect.mode = when (config.scalingMode) {
-                ScreenEffectsConfig.SCALING_MODE_NEAREST -> ScalingModeEffect.Mode.NEAREST
-                ScreenEffectsConfig.SCALING_MODE_FILL -> ScalingModeEffect.Mode.FILL
-                ScreenEffectsConfig.SCALING_MODE_STRETCH -> ScalingModeEffect.Mode.STRETCH
-                else -> ScalingModeEffect.Mode.LINEAR
-            }
-            effects += scalingEffect
-        }
+/**
+ * Maps Pluvia's rich screen-effects config onto VulkanRenderer's compact effect set.
+ *
+ * The Vulkan compositor (ported from Winlator-Ludashi) only supports five
+ * post-process effects: NONE / FSR / DLS / CRT / HDR / NATURAL. Pluvia's broader
+ * GL effects (Toon, FXAA, Vivid, NTSC, scaling modes, color grading) have no
+ * direct Vulkan equivalent yet — they're silently ignored. FSR sharpness levels
+ * 0..4 are mapped onto the 0.0..1.0 sharpness range the native side expects.
+ */
+fun applyScreenEffectsConfig(renderer: VulkanRenderer, config: ScreenEffectsConfig) {
+    val effectId = when (config.scalingMode) {
+        ScreenEffectsConfig.SCALING_MODE_FSR,
+        ScreenEffectsConfig.SCALING_MODE_FSR_ASPECT -> VulkanRenderer.EFFECT_FSR
+        else -> if (config.enableCRT) VulkanRenderer.EFFECT_CRT else VulkanRenderer.EFFECT_NONE
     }
-
-    if (abs(config.brightness) > 0.001f || abs(config.contrast) > 0.001f || abs(config.gamma - 1.0f) > 0.001f) {
-        val colorEffect = ColorEffect().apply {
-            brightness = config.brightness / 100f
-            contrast = config.contrast / 100f
-            gamma = config.gamma
-        }
-        effects += colorEffect
-    }
-
-    if (config.enableToon) {
-        effects += composer.getEffect(ToonEffect::class.java) ?: ToonEffect()
-    }
-    if (config.enableFXAA) {
-        effects += composer.getEffect(FXAAEffect::class.java) ?: FXAAEffect()
-    }
-    if (config.enableVivid) {
-        effects += composer.getEffect(VividEffect::class.java) ?: VividEffect()
-    }
-    if (config.enableCRT) {
-        effects += composer.getEffect(CRTEffect::class.java) ?: CRTEffect()
-    }
-    if (config.enableNTSC) {
-        effects += composer.getEffect(NTSCCombinedEffect::class.java) ?: NTSCCombinedEffect()
-    }
-
-    composer.setEffects(effects)
+    // fsrSharpnessLevel is 0..4 (quick-menu steps); native expects 0.0..1.0.
+    val sharpness = (config.fsrSharpnessLevel.coerceIn(0, 4)) / 4.0f
+    renderer.setEffect(effectId, sharpness)
 }
