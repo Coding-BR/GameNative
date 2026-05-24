@@ -80,10 +80,6 @@ import kotlin.math.abs
 private const val SCREEN_EFFECT_PERCENT_STEP = 5f
 private const val SCREEN_EFFECT_GAMMA_STEP = 0.1f
 
-// The Vulkan compositor supports a small effect set (NONE / FSR / DLS / CRT
-// / HDR / NATURAL). The slider picks the scaling-style effect (None / FSR /
-// FSR Fit / DLS / Natural). CRT and Vivid (HDR) are toggles; the toggles win
-// over the slider (see applyScreenEffectsConfig priority).
 private val VULKAN_SUPPORTED_SCALING_MODES = listOf(
     ScreenEffectsConfig.SCALING_MODE_NONE,
     ScreenEffectsConfig.SCALING_MODE_FSR,

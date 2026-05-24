@@ -100,17 +100,6 @@ fun fsrQuickMenuLevelToStops(level: Int): Float {
     }
 }
 
-/**
- * Maps Pluvia's screen-effects config onto VulkanRenderer's compact effect set.
- *
- * The Vulkan compositor runs one effect at a time (FSR / DLS / CRT / HDR /
- * NATURAL). We resolve user selections by priority: Vivid (HDR) > CRT >
- * slider effect (DLS / Natural / FSR scaling) > None. Sharpness applies to FSR
- * and DLS only.
- *
- * Pluvia's older GL effects (Toon, FXAA, NTSC, brightness/contrast/gamma) have
- * no Vulkan equivalent and are silently ignored.
- */
 fun applyScreenEffectsConfig(renderer: VulkanRenderer, config: ScreenEffectsConfig) {
     val effectId = when {
         config.enableVivid -> VulkanRenderer.EFFECT_HDR

@@ -7,10 +7,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -Wno-unused-function -Wimplicit-function
 #add_subdirectory(proot)
 add_subdirectory(virglrenderer)
 add_subdirectory(patchelf)
-
-# Adrenotools (libadrenotools): lets the Vulkan compositor load a custom Vulkan
-# driver (e.g. Turnip / KGSL builds) instead of the stock Qualcomm blob. Same
-# library used by Pluvia's DXVK env-var path (AdrenotoolsManager.java).
 add_subdirectory(extras/adrenotools)
 
 add_library(winlator SHARED
@@ -30,13 +26,6 @@ target_link_libraries(winlator
                       GLESv2
                       GLESv3)
 
-# ---------------------------------------------------------------------------
-# Vulkan renderer (ported from Winlator-Ludashi).
-#
-# Compiles window.vert / window.frag to SPIR-V headers at build time using
-# glslangValidator (ships with the Android NDK). The resulting libvulkan_renderer.so
-# is loaded by com.winlator.renderer.VulkanRenderer.
-# ---------------------------------------------------------------------------
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/window_vert.h

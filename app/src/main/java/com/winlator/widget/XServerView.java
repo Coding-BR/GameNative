@@ -14,17 +14,6 @@ import com.winlator.xserver.XServer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Vulkan-backed X-server view, ported from Winlator-Ludashi
- * (StevenMXZ/Winlator-Ludashi).
- *
- * Hosts a {@link VulkanRenderer} that imports DXVK / Mesa AHardwareBuffers
- * straight into VkImages via VK_ANDROID_external_memory_android_hardware_buffer,
- * skipping the GL texture copy the legacy {@link XServerViewGL} path performs.
- *
- * Containers that need VirGL still use {@link XServerViewGL}; selection is
- * done at construction in the screen layer.
- */
 @SuppressLint("ViewConstructor")
 public class XServerView extends SurfaceView implements SurfaceHolder.Callback, XServerRendererView {
     private final VulkanRenderer renderer;
@@ -67,14 +56,9 @@ public class XServerView extends SurfaceView implements SurfaceHolder.Callback, 
         eventExecutor.execute(r);
     }
 
-    // No-ops to match the GLSurfaceView shape expected by some callers
-    // (XServerScreen, Activity lifecycle wiring). VulkanRenderer manages
-    // its own thread lifecycle via the SurfaceHolder.Callback above.
     public void onPause() {}
     public void onResume() {}
 
-    // Pluvia callers (PluviaApp, XServerScreen) treat fps limit as a property
-    // of the view; VulkanRenderer applies it via SurfaceControl.setFrameRate.
     public int getFrameRateLimit() {
         return frameRateLimit;
     }
@@ -84,8 +68,6 @@ public class XServerView extends SurfaceView implements SurfaceHolder.Callback, 
         renderer.setFpsLimit(this.frameRateLimit);
     }
 
-    // Compatibility shim for GLSurfaceView's requestRender(); the Vulkan
-    // renderer is push-driven, so we just kick a scene update.
     public void requestRender() {
         renderer.queueSceneUpdate();
     }

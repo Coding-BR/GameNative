@@ -87,9 +87,6 @@ public class XServer {
         this.renderer = renderer;
     }
 
-    // No-op stub used by VulkanRenderer's scanout path (ported from Winlator-Ludashi).
-    // Upstream pauses X rendering once the game's direct-scanout layer takes over;
-    // Pluvia does not yet wire that up, so this is a no-op.
     public void setRenderingEnabled(boolean enabled) {
         // intentionally empty
     }
