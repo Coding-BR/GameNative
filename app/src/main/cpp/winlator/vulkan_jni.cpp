@@ -1,26 +1,76 @@
-// JNI bridge for VulkanRenderer.
-//
-// Adapted from Winlator-Ludashi (StevenMXZ/Winlator-Ludashi). The upstream
-// version supports loading a custom Adreno driver via libadrenotools
 #include <jni.h>
 #include <android/native_window_jni.h>
 #include <dlfcn.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+#include "../extras/adrenotools/include/adrenotools/driver.h"
 #include "VulkanRendererContext.h"
+
+static void* openAdrenotoolsDriver(const char* driverPath, const char* libraryName, const char* nativeLibDir) {
+    if (!driverPath || !libraryName || !nativeLibDir) return nullptr;
+    if (access(driverPath, F_OK) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR,"Winlator_Renderer",
+            "openAdrenotoolsDriver: driverPath not accessible: %s", driverPath);
+        return nullptr;
+    }
+    char tmpdir[512];
+    snprintf(tmpdir, sizeof(tmpdir), "%stemp", driverPath);
+    mkdir(tmpdir, S_IRWXU | S_IRWXG);
+    __android_log_print(ANDROID_LOG_DEBUG,"Winlator_Renderer",
+        "openAdrenotoolsDriver: driverPath=%s lib=%s nativeLibDir=%s tmp=%s",
+        driverPath, libraryName, nativeLibDir, tmpdir);
+    setenv("ADRENOTOOLS_DRIVER_PATH", driverPath, 1);
+    setenv("ADRENOTOOLS_DRIVER_NAME", libraryName, 1);
+    setenv("ADRENOTOOLS_HOOKS_PATH", nativeLibDir, 1);
+    const char* redirectDir = getenv("ADRENOTOOLS_REDIRECT_DIR");
+    int featureFlags = ADRENOTOOLS_DRIVER_CUSTOM;
+    if (redirectDir && redirectDir[0] != '\0') {
+        featureFlags |= ADRENOTOOLS_DRIVER_FILE_REDIRECT;
+    } else {
+        unsetenv("ADRENOTOOLS_DRIVER_FILE_REDIRECT");
+    }
+    void* handle = adrenotools_open_libvulkan(
+        RTLD_LOCAL | RTLD_NOW,
+        featureFlags,
+        tmpdir,
+        nativeLibDir,
+        driverPath,
+        libraryName,
+        (redirectDir && redirectDir[0] != '\0') ? redirectDir : nullptr,
+        nullptr);
+    if (!handle) {
+        __android_log_print(ANDROID_LOG_ERROR,"Winlator_Renderer",
+            "openAdrenotoolsDriver: adrenotools_open_libvulkan failed");
+    } else {
+        __android_log_print(ANDROID_LOG_DEBUG,"Winlator_Renderer",
+            "openAdrenotoolsDriver: SUCCESS handle=%p", handle);
+    }
+    return handle;
+}
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeInit(
     JNIEnv* env, jobject, jobject surface, jint w, jint h,
-    jstring /*jDriverPath*/, jstring /*jLibraryName*/, jstring /*jNativeLibDir*/)
+    jstring jDriverPath, jstring jLibraryName, jstring jNativeLibDir)
 {
     ANativeWindow* win = ANativeWindow_fromSurface(env, surface);
     if (!win) return 0;
-    // Adrenotools custom driver loading intentionally stubbed out: always stock driver.
     void* adrenotoolsHandle = nullptr;
+    if (jDriverPath && jLibraryName && jNativeLibDir) {
+        const char* dp  = env->GetStringUTFChars(jDriverPath,   nullptr);
+        const char* lib = env->GetStringUTFChars(jLibraryName,  nullptr);
+        const char* nld = env->GetStringUTFChars(jNativeLibDir, nullptr);
+        adrenotoolsHandle = openAdrenotoolsDriver(dp, lib, nld);
+        env->ReleaseStringUTFChars(jDriverPath,   dp);
+        env->ReleaseStringUTFChars(jLibraryName,  lib);
+        env->ReleaseStringUTFChars(jNativeLibDir, nld);
+    }
     try { return reinterpret_cast<jlong>(new VulkanRendererContext(win, w, h, adrenotoolsHandle)); }
     catch (...) {
         ANativeWindow_release(win);
+        if (adrenotoolsHandle) dlclose(adrenotoolsHandle);
         return 0;
     }
 }
@@ -91,6 +141,9 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeRemoveWindow(JNIEnv*, jobject, jlong handle, jlong id) {
     auto* r=reinterpret_cast<VulkanRendererContext*>(handle); if (r) r->removeWindow(id);
 }
+
+
+
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_renderer_VulkanRenderer_nativeInitScanout(JNIEnv*, jobject, jlong handle) {

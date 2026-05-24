@@ -22,20 +22,6 @@ import com.winlator.xserver.XServer;
 
 import java.util.ArrayList;
 
-/**
- * Vulkan-backed X server compositor, ported from Winlator-Ludashi
- * (StevenMXZ/Winlator-Ludashi). Sends DXVK/Mesa AHardwareBuffer frames
- * straight into VkImages via VK_ANDROID_external_memory_android_hardware_buffer,
- * skipping the GL texture copy that {@link GLRenderer} performs.
-
- * Differences from upstream:
- *   - HUD integration uses Pluvia's {@link FrameRating} widget (the scanout-mode
- *     "isNative"/"onFrame" hooks from Ludashi's WinlatorHUD are stubbed).
- *   - Adrenotools custom-driver loading is stubbed in the JNI layer; the
- *     {@code driverPath}/{@code libraryName} args are passed but ignored.
- *   - Adrenotools custom-driver loading is stubbed in the JNI layer; the
- *     {@code driverPath}/{@code libraryName} args are passed but ignored.
- */
 public class VulkanRenderer implements WindowManager.OnWindowModificationListener,
                                        Pointer.OnPointerMotionListener,
                                        XServerRenderer {
@@ -60,6 +46,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     public int surfaceWidth;
     public int surfaceHeight;
     private String[] unviewableWMClasses = null;
+    private String forceFullscreenWMClass = null;
     private boolean cursorVisible = false;
     private boolean nativeMode = false;
     private String driverPath = null;
@@ -418,10 +405,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void onUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
-        // Ludashi's WinlatorHUD had setIsNative/onFrame; Pluvia's FrameRating just has update().
-        if (hudRef != null && !nativeMode) {
-            hudRef.update();
-        }
+        if (hudRef != null && !nativeMode) hudRef.update();
         if (nativeHandle == 0 || pixmap == null) return;
         Drawable targetDrawable = window.getContent();
         long targetId = did(targetDrawable);
@@ -434,11 +418,10 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                 long ahbPtr = g.getHardwareBufferPtr();
                 if (ahbPtr != 0) {
                     if (nativeMode && pixmap.isDirectScanout() && nativeIsScanoutActive(nativeHandle)) {
-                        // GPUImage.lock/unlock are not part of Pluvia's API; the buffer is
-                        // permanently CPU-mapped via lockHardwareBuffer in the ctor. Native
-                        // side reads via the AHB handle directly.
+                        g.unlock();
                         nativeScanoutSetBuffer(nativeHandle, ahbPtr,
                             rx, ry, pixmap.width, pixmap.height);
+                        g.lock();
                     } else {
                         nativeUpdateWindowContentAHB(nativeHandle, targetId, ahbPtr,
                             pixmap.width, pixmap.height, rx, ry);
@@ -486,14 +469,15 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
                     boolean scanoutNow = nativeMode && nativeIsScanoutActive(handle);
                     if (nativeMode && drawable.isDirectScanout() && scanoutNow) {
                         boolean wasDelivered = nativeIsGameFrameDelivered(handle);
+                        g.unlock();
                         nativeScanoutSetBuffer(handle, ahbPtr,
                             rx, ry, drawable.width, drawable.height);
+                        g.lock();
                         boolean delivered = nativeIsGameFrameDelivered(handle);
                         if (!xRenderingPausedForScanout && !wasDelivered && delivered) {
                             xServer.setRenderingEnabled(false);
                             xRenderingPausedForScanout = true;
                         }
-                        if (hudRef != null) hudRef.update();
                     } else if (!scanoutNow) {
                         nativeUpdateWindowContentAHB(handle, drawableId, ahbPtr,
                             drawable.width, drawable.height, rx, ry);
@@ -704,27 +688,21 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
         hudRef = fr;
     }
 
-    public boolean isFullscreen() { return fullscreen; }
-    @Override public XServerRendererView getRendererView() { return xServerView; }
-    public void toggleFullscreen() { fullscreen = !fullscreen; synchronized (lock) { updateTransform(); } xServerView.queueEvent(this::updateScene); }
-
-    // ---------------------------------------------------------------------
-    // Compatibility stubs so existing Pluvia call sites that used to talk to
-    // GLRenderer keep compiling. They are intentionally minimal:
-    //   * setOnFrameRenderedListener: VulkanRenderer drives the HUD via
-    //     setFrameRating()/hudRef.update() from onUpdateWindowContent. The
-    //     extra per-frame Runnable hook isn't needed; we accept it and ignore.
-    //   * forceFullscreenWMClass: GLRenderer auto-toggled fullscreen when a
-    //     window whose WM_CLASS matched the launched .exe appeared. Not yet
-    //     reimplemented for Vulkan; user can still toggle fullscreen manually.
-    //   * getSharedEGLContext: only used by VirGLRendererComponent, which
-    //     needs a GL context. Returns null here; the VirGL passthrough path
-    //     does not work with the Vulkan renderer.
-    public void setOnFrameRenderedListener(Runnable listener) { /* no-op */ }
-    private String forceFullscreenWMClass;
-    public void setForceFullscreenWMClass(String wmClass) { this.forceFullscreenWMClass = wmClass; }
+    @Override
     public String getForceFullscreenWMClass() { return forceFullscreenWMClass; }
-    public javax.microedition.khronos.egl.EGLContext getSharedEGLContext() { return null; }
+
+    @Override
+    public void setForceFullscreenWMClass(String wmClass) { this.forceFullscreenWMClass = wmClass; }
+
+    @Override
+    public void setOnFrameRenderedListener(Runnable r) { /* no-op: Vulkan compositor does not expose per-frame callbacks */ }
+
+    @Override
+    public XServerRendererView getRendererView() { return xServerView; }
+
+    @Override
+    public boolean isFullscreen() { return fullscreen; }
+    public void toggleFullscreen() { fullscreen = !fullscreen; synchronized (lock) { updateTransform(); } xServerView.queueEvent(this::updateScene); }
     public void setScreenOffsetYRelativeToCursor(boolean b) { screenOffsetYRelativeToCursor = b; synchronized (lock) { updateTransform(); } }
     public boolean isScreenOffsetYRelativeToCursor() { return screenOffsetYRelativeToCursor; }
     public void setMagnifierZoom(float zoom) { magnifierZoom = zoom; }

@@ -8,6 +8,11 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -Wno-unused-function -Wimplicit-function
 add_subdirectory(virglrenderer)
 add_subdirectory(patchelf)
 
+# Adrenotools (libadrenotools): lets the Vulkan compositor load a custom Vulkan
+# driver (e.g. Turnip / KGSL builds) instead of the stock Qualcomm blob. Same
+# library used by Pluvia's DXVK env-var path (AdrenotoolsManager.java).
+add_subdirectory(extras/adrenotools)
+
 add_library(winlator SHARED
             winlator/drawable.c
             winlator/gpu_image.c
@@ -64,5 +69,6 @@ target_link_libraries(vulkan_renderer
                       log
                       android
                       vulkan
+                      adrenotools
                       dl
                       atomic)
