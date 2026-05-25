@@ -26,6 +26,15 @@ target_link_libraries(winlator
                       GLESv2
                       GLESv3)
 
+add_library(fakeinput SHARED
+            winlator/fakeinput.cpp)
+
+target_compile_options(fakeinput PRIVATE -Wall -Wextra -fvisibility=hidden)
+
+target_link_libraries(fakeinput
+                      log
+                      dl)
+
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/window_vert.h

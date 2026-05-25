@@ -306,8 +306,37 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (new File(sysvPath).exists()) ld_preload += sysvPath;
 
 
-        ld_preload += ":" + evshimPath;
+        // libevshim.so disabled — replaced by libfakeinput.so (Ludashi-style evdev shim).
+        // ld_preload += ":" + evshimPath;
         ld_preload += ":" + replacePath;
+
+        // libfakeinput.so — Ludashi-style evdev shim. Intercepts open/ioctl/read on
+        // /dev/input/event* and routes them to per-slot files Java writes to via FakeInputWriter.
+        File fakeinputDest = new File(imageFs.getLibDir(), "libfakeinput.so");
+        String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
+        File fakeinputSrc = new File(nativeLibDir, "libfakeinput.so");
+        try {
+            if (fakeinputSrc.exists()) {
+                FileUtils.copy(fakeinputSrc, fakeinputDest);
+            } else {
+                Log.e("BionicProgramLauncherComponent", "libfakeinput.so NOT FOUND in APK: " + fakeinputSrc.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            Log.e("BionicProgramLauncherComponent", "Failed to copy libfakeinput.so: " + e.getMessage());
+        }
+        if (fakeinputDest.exists()) {
+            ld_preload += ":" + fakeinputDest.getAbsolutePath();
+        }
+
+        File devInputDir = new File(imageFs.getRootDir(), "dev/input");
+        devInputDir.mkdirs();
+        File event0 = new File(devInputDir, "event0");
+        if (!event0.exists()) {
+            try { event0.createNewFile(); } catch (Exception ignored) {}
+        }
+        envVars.put("FAKE_EVDEV_DIR", devInputDir.getAbsolutePath());
+        envVars.put("FAKE_EVDEV_VIBRATION", "1");
+        envVars.put("FAKE_EVDEV_LOG", "1"); // TODO: remove once verified — emits shim trace to stderr/logcat
 
         envVars.put("LD_PRELOAD", ld_preload);
 

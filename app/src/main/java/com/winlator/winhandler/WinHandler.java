@@ -2,6 +2,9 @@ package com.winlator.winhandler;
 
 import android.content.Context;
 import android.content.Intent;
+import android.hardware.input.InputManager;
+import android.net.LocalServerSocket;
+import android.net.LocalSocket;
 import android.net.Uri;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -15,6 +18,7 @@ import com.winlator.core.StringUtils;
 import com.winlator.inputcontrols.ControllerManager;
 import com.winlator.inputcontrols.ControlsProfile;
 import com.winlator.inputcontrols.ExternalController;
+import com.winlator.inputcontrols.FakeInputWriter;
 import com.winlator.inputcontrols.GamepadState;
 import com.winlator.inputcontrols.TouchMouse;
 import com.winlator.math.XForm;
@@ -40,8 +44,12 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 
@@ -84,6 +92,21 @@ public class WinHandler {
     private Context activity;
     private final java.util.Set<Integer> ignoredDeviceIds = new java.util.HashSet<>();
 
+    // --- FakeInputWriter (Ludashi-style evdev) ---
+    public static final int MAX_CONTROLLERS = 4;
+    private static final int OSC_DEVICE_ID = -1;
+    private final FakeInputWriter[] writers = new FakeInputWriter[MAX_CONTROLLERS];
+    private final Map<Integer, Integer> deviceToSlot = new HashMap<>();
+    private final Set<Integer> usedSlots = new HashSet<>();
+    private String fakeInputBasePath;
+    private LocalServerSocket vibrationServer;
+    private volatile boolean vibrationRunning = false;
+    private final boolean[] vibrationEnabledSlots = new boolean[MAX_CONTROLLERS];
+    private int fallbackSlot = -1;
+    private InputManager fakeInputManager;
+    private InputManager.InputDeviceListener fakeInputDeviceListener;
+    private final Map<Integer, ExternalController> controllerCache = new HashMap<>();
+
     // Add method to set InputControlsView
     public void setInputControlsView(InputControlsView view) {
         this.inputControlsView = view;
@@ -116,6 +139,22 @@ public class WinHandler {
         this.xServerView = xServerView;
         this.controllerManager = ControllerManager.getInstance();
         this.activity = xServerView.getContext();
+
+        // Default per-slot vibration on (matches Ludashi default behavior).
+        for (int i = 0; i < MAX_CONTROLLERS; i++) {
+            vibrationEnabledSlots[i] = true;
+        }
+
+        // Release evdev slot when an input device is physically removed.
+        this.fakeInputManager = (InputManager) activity.getSystemService(Context.INPUT_SERVICE);
+        this.fakeInputDeviceListener = new InputManager.InputDeviceListener() {
+            @Override public void onInputDeviceAdded(int deviceId) {}
+            @Override public void onInputDeviceRemoved(int deviceId) { releaseSlot(deviceId); }
+            @Override public void onInputDeviceChanged(int deviceId) {}
+        };
+        if (fakeInputManager != null) {
+            fakeInputManager.registerInputDeviceListener(fakeInputDeviceListener, null);
+        }
     }
 
     public void refreshControllerMappings() {
@@ -343,6 +382,7 @@ public class WinHandler {
 
     public void stop() {
         this.running = false;
+        closeFakeInputWriter();
         DatagramSocket datagramSocket = this.socket;
         if (datagramSocket != null) {
             datagramSocket.close();
@@ -566,7 +606,9 @@ public class WinHandler {
             }
         });
 
-        startRumblePoller();
+        // Vibration now delivered via libfakeinput.so → LocalServerSocket "winlator_vibration"
+        // (see startVibrationListener). The mmap rumble poller is left in place but unused.
+        // startRumblePoller();
         running = true;
         startSendThread();
     }
@@ -669,29 +711,43 @@ public class WinHandler {
     }
 
     public void sendGamepadState() {
-        if (!this.initReceived || this.gamepadClients.isEmpty()) {
-            return;
-        }
-        final ControlsProfile profile = inputControlsView.getProfile();
-        final boolean useVirtualGamepad = profile != null && profile.isVirtualGamepad();
-        final boolean enabled = this.currentController != null || useVirtualGamepad;
-        Iterator<Integer> it = this.gamepadClients.iterator();
-        while (it.hasNext()) {
-            final int port = it.next().intValue();
-            addAction(() -> {
-                this.sendData.rewind();
-                sendData.put(RequestCodes.GET_GAMEPAD_STATE);
-                sendData.put((byte)(enabled ? 1 : 0));
-                if (enabled) {
-                    this.sendData.putInt(!useVirtualGamepad ? this.currentController.getDeviceId() : inputControlsView.getProfile().id);
-                    if (useVirtualGamepad) {
-                        inputControlsView.getProfile().getGamepadState().writeTo(sendData);
-                    } else {
-                        this.currentController.state.writeTo(this.sendData);
+        // OSC (on-screen controls) → slot for OSC_DEVICE_ID
+        if (inputControlsView != null) {
+            ControlsProfile profile = inputControlsView.getProfile();
+            if (profile != null) {
+                boolean useVirtualGamepad = profile.isVirtualGamepad()
+                        && inputControlsView.isShowTouchscreenControls();
+                if (useVirtualGamepad) {
+                    int slot = assignSlot(OSC_DEVICE_ID);
+                    if (slot >= 0 && writers[slot] != null) {
+                        writers[slot].writeGamepadState(profile.getGamepadState());
                     }
+                } else {
+                    releaseSlot(OSC_DEVICE_ID);
                 }
-                sendPacket(port);
-            });
+            } else {
+                releaseSlot(OSC_DEVICE_ID);
+            }
+        } else {
+            releaseSlot(OSC_DEVICE_ID);
+        }
+
+        // Physical controller state — PhysicalControllerHandler has already applied
+        // binding remap (copies profile.gamepadState into currentController.state).
+        // Forward through FakeInputWriter so Wine sees the remapped values.
+        if (currentController != null) {
+            sendGamepadState(currentController);
+        }
+        for (ExternalController extra : extraControllers) {
+            if (extra != null) sendGamepadState(extra);
+        }
+    }
+
+    public void sendGamepadState(ExternalController controller) {
+        if (controller == null) return;
+        int slot = assignSlot(controller.getDeviceId());
+        if (slot >= 0 && writers[slot] != null) {
+            writers[slot].writeGamepadState(controller.state);
         }
     }
 
@@ -720,8 +776,7 @@ public class WinHandler {
         }
         if (externalController != null && externalController.getDeviceId() == event.getDeviceId() && (handled = this.currentController.updateStateFromMotionEvent(event))) {
             if (handled) {
-                sendGamepadState();
-                sendMemoryFileState();
+                sendGamepadState(externalController);
             }
         }
         return handled;
@@ -764,9 +819,8 @@ public class WinHandler {
             } else if (action == KeyEvent.ACTION_UP) {
                 handled = this.currentController.updateStateFromKeyEvent(event);
             }
-            sendMemoryFileState(this.currentController, buffer);
             if (handled) {
-                sendGamepadState();
+                sendGamepadState(externalController);
             }
         }
         return handled;
@@ -892,5 +946,165 @@ public class WinHandler {
     }
     public void clearIgnoredDevices() {
         ignoredDeviceIds.clear();
+    }
+
+    // ============================================================
+    // FakeInputWriter / evdev forwarding (ported from Ludashi)
+    // ============================================================
+
+    public int getMaxControllers() {
+        return MAX_CONTROLLERS;
+    }
+
+    /**
+     * @param fakeInputPath Path to the fake-input directory (e.g. <imagefs>/dev/input)
+     */
+    public void setFakeInputPath(String fakeInputPath) {
+        if (fakeInputPath != null && !fakeInputPath.isEmpty()) {
+            this.fakeInputBasePath = fakeInputPath;
+            Log.d(TAG, "FakeInputWriter base path set: " + fakeInputPath);
+            startVibrationListener();
+        }
+    }
+
+    /** Assign a slot to a device using FCFS. Sticky slots - disconnect keeps reservation. */
+    private synchronized int assignSlot(int deviceId) {
+        Integer existing = deviceToSlot.get(deviceId);
+        if (existing != null) return existing;
+
+        for (int slot = 0; slot < MAX_CONTROLLERS; slot++) {
+            if (!usedSlots.contains(slot)) {
+                usedSlots.add(slot);
+                deviceToSlot.put(deviceId, slot);
+                if (fakeInputBasePath != null && writers[slot] == null) {
+                    writers[slot] = new FakeInputWriter(fakeInputBasePath, slot);
+                    writers[slot].open();
+                    Log.d(TAG, "Assigned device " + deviceId + " to slot " + slot);
+                }
+                return slot;
+            }
+        }
+        Log.w(TAG, "No slots available for device " + deviceId);
+        return -1;
+    }
+
+    private synchronized void releaseSlot(int deviceId) {
+        Integer slot = deviceToSlot.remove(deviceId);
+        if (slot != null) {
+            if (fallbackSlot == slot) fallbackSlot = -1;
+            if (writers[slot] != null) {
+                writers[slot].destroy();
+                writers[slot] = null;
+            }
+            usedSlots.remove(slot);
+            controllerCache.remove(deviceId);
+            Log.d(TAG, "Device " + deviceId + " disconnected (or OSC disabled). Slot released: " + slot);
+        }
+    }
+
+    public void closeFakeInputWriter() {
+        if (fakeInputManager != null && fakeInputDeviceListener != null) {
+            try { fakeInputManager.unregisterInputDeviceListener(fakeInputDeviceListener); } catch (Exception ignored) {}
+        }
+        for (int i = 0; i < MAX_CONTROLLERS; i++) {
+            if (writers[i] != null) {
+                writers[i].destroy();
+                writers[i] = null;
+            }
+        }
+        deviceToSlot.clear();
+        usedSlots.clear();
+        controllerCache.clear();
+        fallbackSlot = -1;
+
+        vibrationRunning = false;
+        if (vibrationServer != null) {
+            try { vibrationServer.close(); } catch (IOException ignored) {}
+            vibrationServer = null;
+        }
+    }
+
+    public void startVibrationListener() {
+        if (vibrationRunning) return;
+        vibrationRunning = true;
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                vibrationServer = new LocalServerSocket("winlator_vibration");
+                Log.d(TAG, "Vibration listener started on abstract socket: winlator_vibration");
+
+                while (vibrationRunning) {
+                    LocalSocket client = vibrationServer.accept();
+                    try {
+                        java.io.InputStream is = client.getInputStream();
+                        byte[] buf = new byte[8];
+                        int read = is.read(buf);
+                        if (read == 8) {
+                            int strong = (buf[0] & 0xFF) | ((buf[1] & 0xFF) << 8);
+                            int weak = (buf[2] & 0xFF) | ((buf[3] & 0xFF) << 8);
+                            int durationMs = (buf[4] & 0xFF) | ((buf[5] & 0xFF) << 8);
+                            int slot = (buf[6] & 0xFF) | ((buf[7] & 0xFF) << 8);
+                            triggerVibration(strong, weak, durationMs, slot);
+                        }
+                        client.close();
+                    } catch (IOException e) {
+                        Log.e(TAG, "Vibration client error: " + e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                if (vibrationRunning) Log.e(TAG, "Vibration listener error: " + e.getMessage());
+            }
+        });
+    }
+
+    private void triggerVibration(int strong, int weak, int durationMs, int slot) {
+        if (slot >= 0 && slot < MAX_CONTROLLERS && !vibrationEnabledSlots[slot]) return;
+
+        Vibrator vibrator = null;
+        Integer deviceId = null;
+        for (Map.Entry<Integer, Integer> entry : deviceToSlot.entrySet()) {
+            if (entry.getValue() == slot) { deviceId = entry.getKey(); break; }
+        }
+
+        if (deviceId != null && deviceId == OSC_DEVICE_ID) {
+            vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+        } else if (deviceId != null) {
+            InputDevice device = InputDevice.getDevice(deviceId);
+            if (device != null) {
+                vibrator = device.getVibrator();
+                if (vibrator == null || !vibrator.hasVibrator()) {
+                    if (!deviceToSlot.containsKey(OSC_DEVICE_ID) && (fallbackSlot == -1 || fallbackSlot == slot)) {
+                        vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+                        fallbackSlot = slot;
+                    } else {
+                        vibrator = null;
+                    }
+                }
+            }
+        }
+
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+
+        if (strong > 0 || weak > 0) {
+            int intensity = Math.max(strong, weak);
+            int amplitude = Math.min(255, Math.max(1, (int) ((intensity / 65535.0f) * 255)));
+            int duration = Math.max(1, durationMs);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
+            } else {
+                vibrator.vibrate(duration);
+            }
+        } else {
+            vibrator.cancel();
+        }
+    }
+
+    public boolean isVibrationEnabledForSlot(int slot) {
+        if (slot >= 0 && slot < MAX_CONTROLLERS) return vibrationEnabledSlots[slot];
+        return false;
+    }
+
+    public void setVibrationEnabledForSlot(int slot, boolean enabled) {
+        if (slot >= 0 && slot < MAX_CONTROLLERS) vibrationEnabledSlots[slot] = enabled;
     }
 }

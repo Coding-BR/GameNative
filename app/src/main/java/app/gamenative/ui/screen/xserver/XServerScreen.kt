@@ -1742,6 +1742,21 @@ fun XServerScreen(
                 imeInputReceiver = imeReceiver
 
                 getxServer().winHandler = WinHandler(getxServer(), this)
+
+                // Prep <imagefs>/dev/input/ for libfakeinput.so. Wine's evdev path reads from
+                // these files once libfakeinput intercepts open("/dev/input/event*").
+                run {
+                    val imageFsRoot = ImageFs.find(context).rootDir
+                    val devInputDir = File(imageFsRoot, "dev/input")
+                    if (devInputDir.exists() || devInputDir.mkdirs()) {
+                        for (i in 0 until WinHandler.MAX_CONTROLLERS) {
+                            val ev = File(devInputDir, "event$i")
+                            if (ev.exists()) ev.delete()
+                        }
+                        try { File(devInputDir, "event0").createNewFile() } catch (_: Exception) {}
+                    }
+                    getxServer().winHandler.setFakeInputPath(devInputDir.absolutePath)
+                }
                 win32AppWorkarounds = Win32AppWorkarounds(getxServer())
                 touchMouse = TouchMouse(getxServer())
                 keyboard = Keyboard(getxServer())
@@ -1974,8 +1989,10 @@ fun XServerScreen(
                                 contentsManager,
                                 onExtractFileListener,
                             )
-                            extractArm64ecInputDLLs(context, container) // REQUIRED: Uses updated xinput1_3 main.c from x86_64 build, prevents crashes with 3+ players, avoids need for input shim dlls.
-                            extractx86_64InputDlls(context, container)
+                            // Custom xinput/dinput DLLs disabled — stock Proton dlls now consume
+                            // the evdev devices exposed by libfakeinput.so (Ludashi-style).
+                            // extractArm64ecInputDLLs(context, container)
+                            // extractx86_64InputDlls(context, container)
                             extractGraphicsDriverFiles(
                                 context,
                                 xServerState.value.graphicsDriver,
