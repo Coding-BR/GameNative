@@ -706,6 +706,7 @@
     <string name="sync_frame">Sync Every Frame</string>
     <string name="disable_present_wait">Disable KHR_present_wait</string>
     <string name="present_modes">Present Modes</string>
+    <string name="renderer_present_modes">Renderer Present Mode</string>
     <string name="resource_type">Memory Resource Type</string>
     <string name="bcn_emulation">BCn Emulation</string>
     <string name="bcn_emulation_type">BCn Emulation Type</string>

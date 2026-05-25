@@ -268,6 +268,7 @@ object ContainerUtils {
             graphicsDriver = container.graphicsDriver,
             graphicsDriverVersion = container.graphicsDriverVersion,
             graphicsDriverConfig = container.graphicsDriverConfig,
+            rendererPresentMode = container.rendererPresentMode,
             dxwrapper = container.dxWrapper,
             dxwrapperConfig = container.dxWrapperConfig,
             audioDriver = container.audioDriver,
@@ -441,6 +442,7 @@ object ContainerUtils {
         container.graphicsDriver = containerData.graphicsDriver
         // Save driver config through to container
         container.graphicsDriverConfig = containerData.graphicsDriverConfig
+        container.rendererPresentMode = containerData.rendererPresentMode
         container.dxWrapper = containerData.dxwrapper
         container.dxWrapperConfig = containerData.dxwrapperConfig
         container.audioDriver = containerData.audioDriver

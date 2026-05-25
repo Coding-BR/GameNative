@@ -133,10 +133,18 @@ fun GraphicsTabContent(state: ContainerConfigState, default: Boolean = false) {
                 onItemSelected = { idx ->
                     state.presentModeIndex.value = idx
                     val cfg = KeyValueSet(config.graphicsDriverConfig)
-                    val selected = state.presentModes[idx]
-                    cfg.put("presentMode", selected)
-                    cfg.put("vkPresentMode", selected)
+                    cfg.put("presentMode", state.presentModes[idx])
                     state.config.value = config.copy(graphicsDriverConfig = cfg.toString())
+                },
+            )
+            SettingsListDropdown(
+                colors = settingsTileColors(),
+                title = { Text(text = stringResource(R.string.renderer_present_modes)) },
+                value = state.rendererPresentModeIndex.value.coerceIn(0, state.rendererPresentModes.lastIndex.coerceAtLeast(0)),
+                items = state.rendererPresentModes,
+                onItemSelected = { idx ->
+                    state.rendererPresentModeIndex.value = idx
+                    state.config.value = config.copy(rendererPresentMode = state.rendererPresentModes[idx])
                 },
             )
             SettingsListDropdown(

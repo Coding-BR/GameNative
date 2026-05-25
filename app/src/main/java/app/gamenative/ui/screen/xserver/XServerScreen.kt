@@ -1655,8 +1655,7 @@ fun XServerScreen(
                 setFrameRateLimit(if (fpsLimiterEnabled) fpsLimiterTarget else 0)
                 val renderer = this.renderer
                 if (!useGLRenderer && renderer is VulkanRenderer) {
-                    val pm = KeyValueSet(container.getGraphicsDriverConfig())
-                        .get("vkPresentMode", "fifo") ?: "fifo"
+                    val pm = container.rendererPresentMode.ifEmpty { "fifo" }
                     val vkMode = when (pm.lowercase(Locale.getDefault())) {
                         "mailbox" -> 1
                         "immediate" -> 0
