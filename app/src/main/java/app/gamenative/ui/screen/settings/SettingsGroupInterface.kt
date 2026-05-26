@@ -1,8 +1,10 @@
 package app.gamenative.ui.screen.settings
 
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -446,18 +448,37 @@ fun SettingsGroupInterface(
         val ctx = LocalContext.current
         val sm = ctx.getSystemService(StorageManager::class.java)
 
-        // All writable volumes: primary first, then every SD / USB
+        // All writable non-primary volumes (SD / USB).
+        // getExternalFilesDirs misses USB OTG on most devices, so also enumerate
+        // StorageManager.storageVolumes and synthesize the per-app files dir.
         val dirs = remember {
-            ctx.getExternalFilesDirs(null)
-                .filterNotNull()
-                .filter { Environment.getExternalStorageState(it) == Environment.MEDIA_MOUNTED }
-                .filter { sm.getStorageVolume(it)?.isPrimary != true }
+            val seen = mutableSetOf<String>()
+            val result = mutableListOf<File>()
+
+            fun tryAdd(dir: File?) {
+                if (dir == null) return
+                if (Environment.getExternalStorageState(dir) != Environment.MEDIA_MOUNTED) return
+                if (sm?.getStorageVolume(dir)?.isPrimary == true) return
+                if (seen.add(dir.absolutePath)) result += dir
+            }
+
+            ctx.getExternalFilesDirs(null)?.forEach { tryAdd(it) }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                sm?.storageVolumes?.forEach { volume ->
+                    if (volume.isPrimary) return@forEach
+                    val volDir = volume.directory ?: return@forEach
+                    tryAdd(File(volDir, "Android/data/${ctx.packageName}/files"))
+                }
+            }
+
+            result
         }
 
         // Labels the user sees
         val labels = remember(dirs) {
             dirs.map { dir ->
-                sm.getStorageVolume(dir)?.getDescription(ctx) ?: dir.name
+                sm?.getStorageVolume(dir)?.getDescription(ctx) ?: dir.name
             }
         }
         var useExternalStorage by rememberSaveable { mutableStateOf(PrefManager.useExternalStorage) }
