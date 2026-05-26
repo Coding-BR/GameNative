@@ -468,7 +468,9 @@ fun SettingsGroupInterface(
                 sm?.storageVolumes?.forEach { volume ->
                     if (volume.isPrimary) return@forEach
                     val volDir = volume.directory ?: return@forEach
-                    tryAdd(File(volDir, "Android/data/${ctx.packageName}/files"))
+                    val candidate = File(volDir, "Android/data/${ctx.packageName}/files")
+                    if (!candidate.isDirectory) candidate.mkdirs()
+                    if (candidate.isDirectory) tryAdd(candidate)
                 }
             }
 
