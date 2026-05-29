@@ -592,7 +592,7 @@ public abstract class ProcessHelper {
             }
         });
 
-        String procFile = "/cmdline";
+        String procFile = BuildConfig.MODERN_ANDROID ? "/cmdline" : "/stat";
         for (int index = 0; index < allPids.length; index++){
             String data = "";
             try (
