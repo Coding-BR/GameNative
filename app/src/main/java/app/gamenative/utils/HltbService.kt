@@ -136,9 +136,10 @@ object HltbService {
     }
 
     private fun buildSearchRequest(name: String, auth: Auth): Request {
+        val searchTerms = normalize(name).split(" ").filter { it.isNotBlank() }
         val body = JSONObject().apply {
             put("searchType", "games")
-            put("searchTerms", JSONArray(name.split(" ")))
+            put("searchTerms", JSONArray(searchTerms))
             put("searchPage", 1)
             put("size", 20)
             put("searchOptions", JSONObject().apply {
@@ -186,10 +187,19 @@ object HltbService {
 
     private fun parseSearchResponse(name: String, body: String): Stats? {
         val data = JSONObject(body).optJSONArray("data") ?: return null
-        if (data.length() == 0) return null
+        if (data.length() == 0) {
+            Timber.tag("HLTB").i("No results for '$name'")
+            return null
+        }
 
-        val bestMatch = findBestMatch(name, data) ?: return null
-        if (!bestMatch.hasCompletionData()) return null
+        val bestMatch = findBestMatch(name, data) ?: run {
+            Timber.tag("HLTB").i("No acceptable match for '$name'")
+            return null
+        }
+        if (!bestMatch.hasCompletionData()) {
+            Timber.tag("HLTB").i("Match for '$name' has no completion data: '${bestMatch.optString("game_name")}'")
+            return null
+        }
 
         Timber.tag("HLTB").i("'$name' -> '${bestMatch.optString("game_name")}' main=${bestMatch.optLong("comp_main")}s")
         return Stats(

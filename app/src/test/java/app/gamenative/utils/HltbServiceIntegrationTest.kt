@@ -76,7 +76,7 @@ class HltbServiceIntegrationTest {
 
         val payload = JSONObject(searchRequest.body.readUtf8())
         assertEquals("games", payload.getString("searchType"))
-        assertEquals("Halo", payload.getJSONArray("searchTerms").getString(0))
+        assertEquals("halo", payload.getJSONArray("searchTerms").getString(0))
         assertEquals("hp-val", payload.getString("hp-key"))
         assertEquals(true, payload.has("searchOptions"))
         assertEquals(true, payload.getJSONObject("searchOptions").has("lists"))
@@ -116,6 +116,23 @@ class HltbServiceIntegrationTest {
         assertNotNull(stats)
         assertEquals("10.3", stats?.mainHours)
         assertEquals(232, stats?.gameId)
+    }
+
+    @Test
+    fun getStats_searchesWithNormalizedTitleTerms() = runBlocking {
+        enqueueAuthResponse()
+        enqueueSearchResponse(game("Armored Core VI: Fires of Rubicon", 63440, 102226, 183507, 102179, 18811))
+
+        val stats = HltbService.getStats("ARMORED CORE™ VI FIRES OF RUBICON™")
+
+        assertNotNull(stats)
+        assertEquals("17.6", stats?.mainHours)
+
+        server.takeRequest()
+        val searchRequest = server.takeRequest()
+        val terms = JSONObject(searchRequest.body.readUtf8()).getJSONArray("searchTerms")
+        assertEquals("armored", terms.getString(0))
+        assertEquals("rubicon", terms.getString(terms.length() - 1))
     }
 
     @Test
