@@ -3,8 +3,6 @@
 package app.gamenative.ui.screen.library
 
 import android.content.Intent
-import androidx.compose.foundation.clickable
-import app.gamenative.ui.screen.library.components.HltbHeroStrip
 import android.content.res.Configuration
 import app.gamenative.ui.screen.library.components.ambient.AmbientDownloadOverlay
 import android.view.KeyEvent
@@ -48,7 +46,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -98,7 +95,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -121,6 +117,7 @@ import app.gamenative.ui.screen.library.appscreen.EpicAppScreen
 import app.gamenative.ui.screen.library.appscreen.GOGAppScreen
 import app.gamenative.ui.screen.library.appscreen.SteamAppScreen
 import app.gamenative.ui.screen.library.components.GameOptionsPanel
+import app.gamenative.utils.HltbService
 import app.gamenative.ui.theme.PluviaTheme
 import com.skydoves.landscapist.ImageOptions
 import com.skydoves.landscapist.coil.CoilImage
@@ -448,6 +445,41 @@ private fun InfoCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HltbInfoCards(
+    stats: HltbService.Stats,
+    modifier: Modifier = Modifier,
+) {
+    val rows = listOf(
+        stringResource(R.string.hltb_main_story) to stats.mainHours,
+        stringResource(R.string.hltb_main_plus_extras) to stats.mainPlusHours,
+        stringResource(R.string.hltb_completionist) to stats.completeHours,
+        stringResource(R.string.hltb_all_styles) to stats.allStylesHours,
+    ).chunked(2)
+
+    Column(modifier = modifier) {
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                row.forEach { (label, hours) ->
+                    InfoCard(
+                        label = label,
+                        value = if (hours == "--") "--" else "${hours}h",
+                        isCompact = true,
+                        modifier = Modifier.weight(1f),
+                        focusableForNavigation = true,
+                    )
+                }
             }
         }
     }
@@ -807,12 +839,6 @@ internal fun AppScreenContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // HLTB stats strip (above play bar)
-                    displayInfo.hltbStats?.let { hltb ->
-                        HltbHeroStrip(hltb)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
                     // Integrated action bar - overlaid on hero
                     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
                     Column(
@@ -1105,6 +1131,10 @@ internal fun AppScreenContent(
                     }
                 }
 
+                displayInfo.hltbStats?.let { hltb ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HltbInfoCards(hltb)
+                }
             }
         }
 

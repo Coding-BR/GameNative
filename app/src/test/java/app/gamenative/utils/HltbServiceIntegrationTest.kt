@@ -60,13 +60,16 @@ class HltbServiceIntegrationTest {
         assertEquals("2.5", stats?.allStylesHours)
         assertEquals(1, stats?.gameId)
 
+        val baseUrl = server.url("/").toString().removeSuffix("/")
         val initRequest = server.takeRequest()
         assertEquals("GET", initRequest.method)
-        assertEquals("http://localhost:${server.port}", initRequest.getHeader("Origin"))
-        assertEquals("http://localhost:${server.port}/", initRequest.getHeader("Referer"))
+        assertEquals("/api/bleed/init", initRequest.requestUrl?.encodedPath)
+        assertEquals(baseUrl, initRequest.getHeader("Origin"))
+        assertEquals("$baseUrl/", initRequest.getHeader("Referer"))
 
         val searchRequest = server.takeRequest()
         assertEquals("POST", searchRequest.method)
+        assertEquals("/api/bleed", searchRequest.requestUrl?.encodedPath)
         assertEquals("token-123", searchRequest.getHeader("x-auth-token"))
         assertEquals("hp-key", searchRequest.getHeader("x-hp-key"))
         assertEquals("hp-val", searchRequest.getHeader("x-hp-val"))
@@ -75,6 +78,9 @@ class HltbServiceIntegrationTest {
         assertEquals("games", payload.getString("searchType"))
         assertEquals("Halo", payload.getJSONArray("searchTerms").getString(0))
         assertEquals("hp-val", payload.getString("hp-key"))
+        assertEquals(true, payload.has("searchOptions"))
+        assertEquals(true, payload.getJSONObject("searchOptions").has("lists"))
+        assertEquals(true, payload.getJSONObject("searchOptions").getJSONObject("games").has("rangeYear"))
     }
 
     @Test
@@ -98,6 +104,18 @@ class HltbServiceIntegrationTest {
 
         assertNull(HltbService.getStats("Empty Game"))
         assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun getStats_acceptsTitleWithEditionSuffix() = runBlocking {
+        enqueueAuthResponse()
+        enqueueSearchResponse(game("Broken Age: The Complete Adventure", 37050, 45000, 54000, 40500, 232))
+
+        val stats = HltbService.getStats("Broken Age")
+
+        assertNotNull(stats)
+        assertEquals("10.3", stats?.mainHours)
+        assertEquals(232, stats?.gameId)
     }
 
     private fun enqueueAuthResponse() {
