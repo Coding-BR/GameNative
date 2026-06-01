@@ -472,6 +472,7 @@ private fun HltbInfoBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 78.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(enabled = canOpenHltb) {
@@ -483,7 +484,7 @@ private fun HltbInfoBar(
                     Timber.tag("HLTB").w(e, "No handler for HLTB game URL")
                 }
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
