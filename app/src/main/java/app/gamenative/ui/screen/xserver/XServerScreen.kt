@@ -4449,7 +4449,7 @@ private fun applyGeneralPatches(
 
 private fun refreshComponentsFiles(context: Context) {
     val extractionPairs = listOf(
-        "pulseaudio-gamenative-20260529.tzst" to File(context.filesDir, "pulseaudio")
+        "pulseaudio-gamenative-20260606.tzst" to File(context.filesDir, "pulseaudio")
     )
 
     AssetUtils.extractComponentsWithVersionCheck(
