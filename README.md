@@ -4,8 +4,6 @@
 
 **Play the PC games you already own — from Steam, Epic and GOG — on your Android device, with cloud saves.**
 
-<video src="https://github.com/user-attachments/assets/95b5397b-908a-44ef-a10a-dac7723580b0" autoplay loop muted playsinline width="100%"></video>
-
 <a href="https://trendshift.io/repositories/14497" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14497" alt="utkarshdalal%2FGameNative | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <a href="https://www.star-history.com/utkarshdalal/gamenative">
@@ -23,6 +21,8 @@
 [![Ko-fi](https://img.shields.io/badge/ko--fi-support-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gamenative)
 
 [**Download**](https://downloads.gamenative.app/releases/1.0.0/gamenative-v1.0.0.apk) · [**Discord**](https://discord.gg/2hKv4VfZfE) · [**Support on Ko-fi**](https://ko-fi.com/gamenative)
+
+<video src="https://github.com/user-attachments/assets/95b5397b-908a-44ef-a10a-dac7723580b0" autoplay loop muted playsinline width="100%"></video>
 
 </div>
 
