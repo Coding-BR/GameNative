@@ -61,6 +61,8 @@ public class PulseAudioComponent extends EnvironmentComponent {
     private Timer suspendTimer;
     private String suspendBehavior = SUSPEND_BEHAVIOR_THREAD;
     private boolean lowLatency = false;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
 
     public PulseAudioComponent(UnixSocketConfig socketConfig, String suspendBehavior, boolean lowLatency) {
         this.socketConfig = socketConfig;
@@ -110,6 +112,11 @@ public class PulseAudioComponent extends EnvironmentComponent {
     public void stop() {
         Timber.tag("PulseAudioComponent").d("Stopping...");
         synchronized (lock) {
+            if (audioManager != null) {
+                audioManager.abandonAudioFocusRequest(audioFocusRequest);
+                Timber.tag("PulseAudioComponent").d("abandonAudioFocusRequest on stop()");
+            }
+
             // Cancel timers if active
             stopSuspendTimer();
 
@@ -252,8 +259,48 @@ public class PulseAudioComponent extends EnvironmentComponent {
         this.performanceMode = (byte) performanceMode;
     }
 
+    private AudioFocusRequest buildAudioRequest() {
+        AudioAttributes.Builder attributesBuilder = new AudioAttributes.Builder();
+        attributesBuilder.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC);
+
+        // Match the value of sink implementation for low latency mode
+        if (this.lowLatency) {
+            attributesBuilder.setUsage(AudioAttributes.USAGE_GAME);
+        }
+
+        AudioFocusRequest.Builder requestbuilder = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN);
+        requestbuilder
+            .setAudioAttributes(attributesBuilder.build())
+            .setAcceptsDelayedFocusGain(true)
+            .setWillPauseWhenDucked(false)
+            .setOnAudioFocusChangeListener(this::handleAudioFocusChange, new Handler(Looper.getMainLooper()));
+
+        return requestbuilder.build();
+    }
+
+    private void handleAudioFocusChange(int focusChange) {
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_GAIN:
+                Timber.tag("PulseAudioComponent").d("audioFocusChanged -> AUDIOFOCUS_GAIN");
+                updateSink(false);
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS:
+                Timber.tag("PulseAudioComponent").d("audioFocusChanged -> AUDIOFOCUS_LOSS");
+                updateSink(true);
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                Timber.tag("PulseAudioComponent").d("audioFocusChanged -> AUDIOFOCUS_LOSS_TRANSIENT");
+                updateSink(true);
+                break;
+        }
+    }
+
     private java.lang.Process execPulseAudio() {
         Context context = environment.getContext();
+        audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        audioFocusRequest = buildAudioRequest();
+        audioManager.requestAudioFocus(audioFocusRequest);
+
         String nativeLibraryDir = context.getApplicationInfo().nativeLibraryDir;
         // nativeLibraryDir = nativeLibraryDir.replace("arm64", "arm64-v8a");
         File workingDir = new File(context.getFilesDir(), "/pulseaudio");
@@ -317,10 +364,20 @@ public class PulseAudioComponent extends EnvironmentComponent {
     }
 
     private void updateSink(boolean suspend) {
-        if (!suspend) {
-            execPactlCommand("suspend-sink " + SINK_NAME + " false");
-        } else {
-            execPactlCommand("suspend-sink " + SINK_NAME + " true");
+        if (audioManager != null) {
+            if (!suspend) {
+                // Start the focus request
+                int requestFocusResult = audioManager.requestAudioFocus(audioFocusRequest);
+                Timber.tag("PulseAudioComponent").d("updateSink: suspend = false -> requestAudioFocus: %s", requestFocusResult);
+
+                if (requestFocusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    execPactlCommand("suspend-sink " + SINK_NAME + " false");
+                } else {
+                    Timber.tag("PulseAudioComponent").d("updateSink: suspend = false -> failed");
+                }
+            } else {
+                execPactlCommand("suspend-sink " + SINK_NAME + " true");
+            }
         }
     }
 
