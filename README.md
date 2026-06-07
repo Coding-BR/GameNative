@@ -1,5 +1,7 @@
 [![Star History Rank](https://api.star-history.com/badge?repo=utkarshdalal/GameNative&theme=dark)](https://www.star-history.com/utkarshdalal/gamenative)
 
+<a href="https://trendshift.io/repositories/14497" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14497" alt="utkarshdalal%2FGameNative | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+
 # GameNative
 
 
