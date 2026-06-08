@@ -5246,8 +5246,9 @@ private fun extractSteamFiles(
     }
 
     // Real-Steam mode: extract the full real-Steam tree once; subsequent boots
-    // reuse what's already on disk.
-    if (steamExe.exists()) return
+    val bionicSteamExe = File(imageFs.getFilesDir(), "steam.exe")
+    val installedIsBionic = bionicSteamExe.exists() && FileUtils.contentEquals(steamExe, bionicSteamExe)
+    if (steamExe.exists() && !installedIsBionic) return
 
     val downloaded = File(imageFs.getFilesDir(), "steam.tzst")
     Timber.i("Extracting steam.tzst")
