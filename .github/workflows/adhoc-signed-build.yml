@@ -2,6 +2,11 @@ name: Ad-hoc Signed Build
 
 on:
   workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to build (leave blank to build the selected branch)"
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -11,6 +16,19 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Check out PR head (fork-aware)
+      if: ${{ inputs.pr != '' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh pr checkout ${{ inputs.pr }}
+    - name: Compute artifact suffix
+      id: meta
+      run: |
+        if [ -n "${{ inputs.pr }}" ]; then
+          echo "suffix=pr-${{ inputs.pr }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "suffix=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+        fi
     - name: set up Java 17
       uses: actions/setup-java@v4
       with:
@@ -120,11 +138,11 @@ jobs:
     - name: Upload Legacy APK
       uses: actions/upload-artifact@v4
       with:
-        name: adhoc-signed-${{ github.ref_name }}
+        name: adhoc-signed-${{ steps.meta.outputs.suffix }}
         path: ${{ github.workspace }}/universal.apk
 
     - name: Upload Modern APK
       uses: actions/upload-artifact@v4
       with:
-        name: adhoc-signed-modern-${{ github.ref_name }}
+        name: adhoc-signed-modern-${{ steps.meta.outputs.suffix }}
         path: ${{ github.workspace }}/universal-modern.apk
