@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updatedAt": "2026-01-26",
+  "version": "2",
+  "updatedAt": "2026-06-10",
   "items": {
     "driver": [
       {
@@ -689,7 +689,8 @@
         "url": "https://github.com/Arihany/WinlatorWCPHub/releases/download/DXVK/dxvk-1.10.3.wcp",
         "variant": "bionic"
       },
-      { "id": "1.12.0-sarek-dyasync",
+      {
+        "id": "1.12.0-sarek-dyasync",
         "name": "DXVK 1.12.0-sarek",
         "url": "https://downloads.gamenative.app/dxwrapper/dxvk-sarek-dyasync-1.12.0.wcp",
         "variant": "bionic"
