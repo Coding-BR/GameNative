@@ -38,6 +38,11 @@
       "url": "https://downloads.gamenative.app/dxwrapper/dxvk-1.11.1-sarek.tzst"
     },
     {
+      "id": "dxvk-1.12.0-sarek",
+      "name": "dxvk-1.12.0-sarek.wcp",
+      "url": "https://downloads.gamenative.app/dxwrapper/dxvk-sarek-dyasync-1.12.0.wcp"
+    },
+    {
       "id": "dxvk-2.4.1",
       "name": "dxvk-2.4.1.tzst",
       "url": "https://downloads.gamenative.app/dxwrapper/dxvk-2.4.1.tzst"
