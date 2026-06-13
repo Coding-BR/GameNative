@@ -41,6 +41,7 @@ import com.winlator.core.DefaultVersion
 import com.winlator.core.KeyValueSet
 import com.winlator.core.StringUtils
 import com.winlator.contents.ContentProfile
+import com.winlator.xenvironment.components.PulseAudioComponent
 import java.util.Locale
 
 @Composable
@@ -323,6 +324,14 @@ fun GeneralTabContent(
                 state.config.value = config.copy(audioDriver = StringUtils.parseIdentifier(state.audioDrivers[it]))
             },
         )
+        if (config.audioDriver == "pulseaudio") {
+            SettingsSwitch(
+                colors = settingsTileColorsAlt(),
+                title = { Text(text = stringResource(R.string.pulseaudio_low_latency)) },
+                state = config.pulseaudioLowLatency,
+                onCheckedChange = { state.config.value = config.copy(pulseaudioLowLatency = it) },
+            )
+        }
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
             title = { Text(text = stringResource(R.string.force_dlc)) },
@@ -330,13 +339,7 @@ fun GeneralTabContent(
             state = config.forceDlc,
             onCheckedChange = { state.config.value = config.copy(forceDlc = it) },
         )
-//        SettingsSwitch(
-//            colors = settingsTileColorsAlt(),
-//            title = { Text(text = stringResource(R.string.local_saves_only)) },
-//            subtitle = { Text(text = stringResource(R.string.local_saves_only_description)) },
-//            state = config.localSavesOnly,
-//            onCheckedChange = { state.config.value = config.copy(localSavesOnly = it) },
-//        )
+
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
             title = { Text(text = stringResource(R.string.use_legacy_drm)) },
@@ -361,11 +364,39 @@ fun GeneralTabContent(
         )
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.epic_offline_mode)) },
+            subtitle = { Text(text = stringResource(R.string.epic_offline_mode_description)) },
+            state = config.epicOfflineMode,
+            onCheckedChange = { state.config.value = config.copy(epicOfflineMode = it) },
+        )
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
             title = { Text(text = stringResource(R.string.launch_steam_client_beta)) },
             subtitle = { Text(text = stringResource(R.string.launch_steam_client_description)) },
             state = config.launchRealSteam,
-            onCheckedChange = { state.config.value = config.copy(launchRealSteam = it) },
+            onCheckedChange = {
+                state.config.value = if (it) {
+                    config.copy(launchRealSteam = true, launchBionicSteam = false)
+                } else {
+                    config.copy(launchRealSteam = false)
+                }
+            },
         )
+        if (config.containerVariant.equals(Container.BIONIC, ignoreCase = true)) {
+            SettingsSwitch(
+                colors = settingsTileColorsAlt(),
+                title = { Text(text = stringResource(R.string.launch_bionic_steam)) },
+                subtitle = { Text(text = stringResource(R.string.launch_bionic_steam_description)) },
+                state = config.launchBionicSteam,
+                onCheckedChange = {
+                    state.config.value = if (it) {
+                        config.copy(launchBionicSteam = true, launchRealSteam = false)
+                    } else {
+                        config.copy(launchBionicSteam = false)
+                    }
+                },
+            )
+        }
         val steamTypeItems = listOf("Normal", "Light", "Ultra Light")
         val currentSteamTypeIndex = when (config.steamType.lowercase()) {
             Container.STEAM_TYPE_LIGHT -> 1

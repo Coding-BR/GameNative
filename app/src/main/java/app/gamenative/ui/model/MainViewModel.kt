@@ -17,6 +17,7 @@ import app.gamenative.events.AndroidEvent
 import app.gamenative.events.SteamEvent
 import app.gamenative.ui.enums.Orientation
 import java.util.EnumSet
+import app.gamenative.service.ActiveGameRegistry
 import app.gamenative.service.SteamService
 import app.gamenative.service.amazon.AmazonService
 import app.gamenative.service.epic.EpicCloudSavesManager
@@ -500,7 +501,7 @@ class MainViewModel @Inject constructor(
                 val container = ContainerUtils.getOrCreateContainer(context, appId)
                 val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
                 if (gameSource == GameSource.STEAM) {
-                    if (container.isLaunchRealSteam()) {
+                    if (container.isLaunchRealSteam() || container.isLaunchBionicSteam()) {
                         SteamUtils.restoreSteamApi(context, appId)
                     } else {
                         val offline = _offline.value
@@ -534,6 +535,7 @@ class MainViewModel @Inject constructor(
 
                 val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
                 Timber.tag("Exit").i("Got game id: $gameId")
+                ActiveGameRegistry.clearIfMatches(gameId)
                 SteamService.notifyRunningProcesses()
                 handleExitCloudSync(context, appId, gameId)
 
@@ -689,15 +691,17 @@ class MainViewModel @Inject constructor(
                         // When launchRealSteam is true, let the real Steam client handle the "game is running" notification
                         val shouldLaunchRealSteam = try {
                             val container = ContainerUtils.getContainer(context, appId)
-                            container.isLaunchRealSteam()
+                            container.isLaunchRealSteam() || container.isLaunchBionicSteam()
                         } catch (e: Exception) {
                             // Container might not exist, default to notifying Steam
                             false
                         }
 
                         if (!shouldLaunchRealSteam) {
+                            ActiveGameRegistry.set(it)
                             SteamService.notifyRunningProcesses(it)
                         } else {
+                            ActiveGameRegistry.clear()
                             Timber.tag("MainViewModel").i("Skipping Steam process notification - real Steam will handle this")
                         }
                     }
