@@ -9,6 +9,7 @@ import app.gamenative.service.epic.manifest.EpicManifest
 import app.gamenative.service.epic.manifest.FileManifest
 import app.gamenative.service.epic.manifest.FileManifestList
 import app.gamenative.service.epic.manifest.ManifestMeta
+import app.gamenative.utils.FileUtils
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -92,12 +93,20 @@ class EpicCloudSavesTest {
             .absolutePath
             .replace('\\', '/')
 
-        val resolved = EpicCloudSavesManager.resolveAbsolutePathCaseInsensitive(
-            metadataPath,
-            trustedRoots = listOf(wineUserDir),
-        )
+        val resolved = FileUtils.resolveCaseInsensitive(File("/"), metadataPath)
 
         assertEquals(saveDir.absolutePath, resolved.absolutePath)
+        assertTrue(resolved.exists())
+    }
+
+    @Test
+    fun `resolveCaseInsensitive keeps matching after an unmatched parent segment`() {
+        val base = tmpDir.newFolder("base")
+        val deep = File(base, "Existing/Nested/LocalLow").apply { mkdirs() }
+
+        val resolved = FileUtils.resolveCaseInsensitive(base, "existing/nested/locallow")
+
+        assertEquals(deep.absolutePath, resolved.absolutePath)
         assertTrue(resolved.exists())
     }
 
