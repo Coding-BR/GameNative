@@ -45,7 +45,8 @@ static int g_debug_enabled = 0;
  *      32     2  low_freq_rumble
  *      34     2  high_freq_rumble
  *      36     4  rumble_seq       — futex word (rumble: Wine -> Java)
- *                                   total: 40 bytes
+ *      40     4  connected        — 0 absent, 1 present (Java -> Wine)
+ *                                   total: 44 bytes
  */
 
 #define SHM_DATA_SIZE  64
@@ -63,14 +64,17 @@ struct gamepad_io {
     atomic_uint       seq;
     struct gamepad_state state;
     atomic_uint       rumble_seq;
+    atomic_uint       connected;
 };
 
 _Static_assert(sizeof(struct gamepad_io) <= SHM_DATA_SIZE, "gamepad_io exceeds SHM_DATA_SIZE");
 
 static struct gamepad_io *shm [MAX_GAMEPADS];
 static int vjoy_ids[MAX_GAMEPADS];
+static SDL_Joystick *vjoy_handles[MAX_GAMEPADS];
 static size_t g_shm_map_size = 0;
 static int g_is_wine = 0;
+static pthread_mutex_t sdl_vjoy_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void build_gamepad_dir(char *out, size_t size)
 {
@@ -172,6 +176,8 @@ static int          (*p_SDL_Init)                   (uint32_t);
 static const char  *(*p_SDL_GetError)               (void);
 static SDL_Joystick*(*p_SDL_JoystickOpen)           (int);
 static int          (*p_SDL_JoystickAttachVirtualEx) (const SDL_VirtualJoystickDesc *);
+static int          (*p_SDL_JoystickDetachVirtual)  (int);
+static void         (*p_SDL_JoystickClose)          (SDL_Joystick *);
 static int          (*p_SDL_JoystickSetVirtualAxis)  (SDL_Joystick *, int, int16_t);
 static int          (*p_SDL_JoystickSetVirtualButton)(SDL_Joystick *, int, uint8_t);
 static int          (*p_SDL_JoystickSetVirtualHat)   (SDL_Joystick *, int, uint8_t);
@@ -223,20 +229,77 @@ static bool try_read_state(struct gamepad_io *s, uint32_t *last_seq, struct game
     return true;
 }
 
+static int attach_vjoy(int idx)
+{
+    SDL_VirtualJoystickDesc d = {0};
+    d.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+    d.type    = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
+    d.naxes   = 6; d.nbuttons = 15; d.nhats = 1;
+    d.Rumble  = &OnRumble;  d.userdata = (void*)(intptr_t)idx;
+    d.vendor_id = 0x045E;  // Microsoft
+    d.product_id = 0x028E; // Xbox 360 Controller
+    d.button_mask = 0xFFFF;
+    d.axis_mask = 0x3F;
+    d.name = "Xbox 360 Controller";
+
+    pthread_mutex_lock(&sdl_vjoy_lock);
+    vjoy_ids[idx] = p_SDL_JoystickAttachVirtualEx(&d);
+    if (vjoy_ids[idx] < 0) {
+        pthread_mutex_unlock(&sdl_vjoy_lock);
+        LOGE("evshim: P%d SDL attach failed: %s\n", idx, p_SDL_GetError());
+        return -1;
+    }
+
+    vjoy_handles[idx] = p_SDL_JoystickOpen(vjoy_ids[idx]);
+    if (!vjoy_handles[idx]) {
+        LOGE("evshim: P%d SDL_JoystickOpen failed\n", idx);
+        p_SDL_JoystickDetachVirtual(vjoy_ids[idx]);
+        vjoy_ids[idx] = -1;
+        pthread_mutex_unlock(&sdl_vjoy_lock);
+        return -1;
+    }
+    pthread_mutex_unlock(&sdl_vjoy_lock);
+
+    LOGI("evshim: P%d virtual joystick id=%d connected\n", idx, vjoy_ids[idx]);
+    return 0;
+}
+
+static void detach_vjoy(int idx)
+{
+    pthread_mutex_lock(&sdl_vjoy_lock);
+    if (vjoy_handles[idx]) {
+        p_SDL_JoystickClose(vjoy_handles[idx]);
+        vjoy_handles[idx] = NULL;
+    }
+    if (vjoy_ids[idx] >= 0) {
+        p_SDL_JoystickDetachVirtual(vjoy_ids[idx]);
+        LOGI("evshim: P%d virtual joystick id=%d disconnected\n", idx, vjoy_ids[idx]);
+        vjoy_ids[idx] = -1;
+    }
+    pthread_mutex_unlock(&sdl_vjoy_lock);
+}
+
+static void set_vjoy_connected(int idx, int connected)
+{
+    if (connected) {
+        if (!vjoy_handles[idx]) {
+            attach_vjoy(idx);
+        }
+    } else {
+        detach_vjoy(idx);
+    }
+}
+
 static void *vjoy_updater(void *arg)
 {
     int idx = (int)(intptr_t)arg;
     struct gamepad_io *s = shm[idx];
 
-    SDL_Joystick *js = p_SDL_JoystickOpen(vjoy_ids[idx]);
-    if (!js) {
-        LOGE("evshim: P%d SDL_JoystickOpen failed\n", idx);
-        return NULL;
-    }
-
     LOGI("evshim: vjoy_updater P%d running (PID %d)\n", idx, getpid());
 
     uint32_t last_seq = atomic_load_explicit(&s->seq, memory_order_acquire);
+    int last_connected = atomic_load_explicit(&s->connected, memory_order_acquire) != 0;
+    set_vjoy_connected(idx, last_connected);
 
     struct timespec ts;
     struct timespec *tsp = NULL;
@@ -254,6 +317,16 @@ static void *vjoy_updater(void *arg)
         struct gamepad_io snap;
 
         if (try_read_state(s, &last_seq, &snap)) {
+            int connected = atomic_load_explicit(&s->connected, memory_order_acquire) != 0;
+            if (connected != last_connected) {
+                set_vjoy_connected(idx, connected);
+                last_connected = connected;
+            }
+            SDL_Joystick *js = vjoy_handles[idx];
+            if (!connected || !js) {
+                continue;
+            }
+
             p_SDL_JoystickSetVirtualAxis(js, 0, snap.state.lx);
             p_SDL_JoystickSetVirtualAxis(js, 1, snap.state.ly);
             p_SDL_JoystickSetVirtualAxis(js, 2, snap.state.rx);
@@ -280,11 +353,13 @@ static void initialize_wine(int players)
 
     GETFUNCPTR(SDL_Init);  GETFUNCPTR(SDL_GetError);
     GETFUNCPTR(SDL_JoystickOpen);  GETFUNCPTR(SDL_JoystickAttachVirtualEx);
+    GETFUNCPTR(SDL_JoystickDetachVirtual);  GETFUNCPTR(SDL_JoystickClose);
     GETFUNCPTR(SDL_JoystickSetVirtualAxis);  GETFUNCPTR(SDL_JoystickSetVirtualButton);
     GETFUNCPTR(SDL_JoystickSetVirtualHat);
     GETFUNCPTR(SDL_GetVersion);
     if (!p_SDL_Init || !p_SDL_GetError || !p_SDL_JoystickOpen ||
-                !p_SDL_JoystickAttachVirtualEx || !p_SDL_JoystickSetVirtualAxis ||
+                !p_SDL_JoystickAttachVirtualEx || !p_SDL_JoystickDetachVirtual ||
+                !p_SDL_JoystickClose || !p_SDL_JoystickSetVirtualAxis ||
                 !p_SDL_JoystickSetVirtualButton || !p_SDL_JoystickSetVirtualHat ||
                 !p_SDL_GetVersion) {
         LOGE("evshim: SDL symbol resolution incomplete; aborting init\n");
@@ -301,31 +376,6 @@ static void initialize_wine(int players)
 
     for (int i = 0; i < players; i++) {
         if (!shm[i]) continue;
-
-        SDL_VirtualJoystickDesc d = {0};
-        d.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
-        d.type    = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
-        d.naxes   = 6; d.nbuttons = 15; d.nhats = 1;
-        d.Rumble  = &OnRumble;  d.userdata = (void*)(intptr_t)i;
-        d.vendor_id = 0x045E;  // Microsoft
-        d.product_id = 0x028E; // Xbox 360 Controller
-        d.button_mask = 0xFFFF;
-        d.axis_mask = 0x3F;
-
-        char name[64];
-        snprintf(name, sizeof name, "Xbox 360 Controller");
-        d.name = strdup(name);
-
-        vjoy_ids[i] = p_SDL_JoystickAttachVirtualEx(&d);
-        if (vjoy_ids[i] < 0) {
-            LOGE("evshim: P%d SDL attach failed: %s\n", i, p_SDL_GetError());
-            munmap(shm[i], g_shm_map_size);
-            shm[i] = NULL;
-            continue;
-        }
-
-        LOGD("evshim: P%d virtual joystick id=%d ready\n", i, vjoy_ids[i]);
-
         pthread_t tid;
         pthread_create(&tid, NULL, vjoy_updater, (void *)(intptr_t)i);
         pthread_detach(tid);
@@ -344,6 +394,9 @@ static void initialize_all_pads(void)
     const char *ep = getenv("EVSHIM_MAX_PLAYERS");
     if (ep) players = atoi(ep);
     if (players > MAX_GAMEPADS) players = MAX_GAMEPADS;
+    for (int i = 0; i < MAX_GAMEPADS; i++) {
+        vjoy_ids[i] = -1;
+    }
 
     setup_shm(players);
 

@@ -99,6 +99,7 @@ public class WinHandler {
     private static final int OFF_HAT = 31;
     private static final int OFF_RUMBLE_LOW = 32;
     private static final int OFF_RUMBLE_HIGH = 34;
+    private static final int OFF_CONNECTED = 40;
 
     // Add method to set InputControlsView
     public void setInputControlsView(InputControlsView view) {
@@ -178,6 +179,7 @@ public class WinHandler {
         } else {
             Log.i(TAG, "Player 1 has no assigned connected controller");
         }
+        setGamepadSlotConnected(0, currentController != null);
         // Initialize Extra Players (2, 3, 4)
         for (int i = 0; i < extraControllers.length; i++) {
             // Player 2 is slot 1, which corresponds to extraControllers[0]
@@ -191,6 +193,7 @@ public class WinHandler {
             } else {
                 Log.i(TAG, "Player " + (i + 2) + " has no assigned connected controller");
             }
+            setGamepadSlotConnected(i + 1, extraControllers[i] != null);
         }
 
         if (clearDisconnectedSlots) {
@@ -227,17 +230,35 @@ public class WinHandler {
             return;
         }
 
-        for (int offset = OFF_LX; offset < OFF_RUMBLE_LOW; offset++) {
-            buffer.put(offset, (byte)0);
-        }
-        buffer.putShort(OFF_LT, (short)-32767);
-        buffer.putShort(OFF_RT, (short)-32767);
+        writeNeutralGamepadState(buffer);
+        buffer.putInt(OFF_CONNECTED, 0);
         notifyStateChanged(slot);
         stopVibration(slot);
         lastLowFreq[slot] = 0;
         lastHighFreq[slot] = 0;
         rumbleDeviceIds[slot] = -1;
         Log.i(TAG, "Cleared disconnected Player " + (slot + 1) + " gamepad state");
+    }
+
+    private void setGamepadSlotConnected(int slot, boolean connected) {
+        MappedByteBuffer buffer = getGamepadBuffer(slot);
+        if (buffer == null) {
+            return;
+        }
+        if (connected && buffer.getInt(OFF_CONNECTED) == 0) {
+            writeNeutralGamepadState(buffer);
+        }
+        buffer.putInt(OFF_CONNECTED, connected ? 1 : 0);
+        notifyStateChanged(slot);
+        Log.i(TAG, "Player " + (slot + 1) + " connected=" + connected);
+    }
+
+    private void writeNeutralGamepadState(MappedByteBuffer buffer) {
+        for (int offset = OFF_LX; offset < OFF_RUMBLE_LOW; offset++) {
+            buffer.put(offset, (byte)0);
+        }
+        buffer.putShort(OFF_LT, (short)-32767);
+        buffer.putShort(OFF_RT, (short)-32767);
     }
 
     private boolean sendPacket(int port) {
@@ -994,6 +1015,7 @@ public class WinHandler {
             return;
         }
         GamepadState state = controller.state;
+        buffer.putInt(OFF_CONNECTED, 1);
 
         buffer.putShort(OFF_LX, (short)(state.thumbLX * 32767));
         buffer.putShort(OFF_LY, (short)(state.thumbLY * 32767));
@@ -1037,6 +1059,7 @@ public class WinHandler {
         if (buffer == null || state == null) {
             return;
         }
+        buffer.putInt(OFF_CONNECTED, 1);
 
         // Axes: write by fixed offsets, not sequential position
         buffer.putShort(OFF_LX, (short) (state.thumbLX * 32767));
