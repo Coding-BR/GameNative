@@ -1922,6 +1922,7 @@ fun XServerScreen(
                             }
                             handler.setPreferredInputApi(PreferredInputApi.values()[container.inputType])
                             handler.setDInputMapperType(container.dinputMapperType)
+                            handler.setVibrationIntensity(container.getExtra("vibrationIntensity", "100").toIntOrNull() ?: 100)
                             if (container.isDisableMouseInput()) {
                                 PluviaApp.touchpadView?.setTouchscreenMouseDisabled(true)
                             } else if (container.isTouchscreenMode()) {
