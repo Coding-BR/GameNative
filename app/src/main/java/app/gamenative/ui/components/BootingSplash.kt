@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -165,6 +167,10 @@ fun BootingSplash(
             AmbientParticles(phase = particlePhase)
 
             if (useHeroBackdrop) {
+                val desaturate = remember {
+                    ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                }
+
                 CoilImage(
                     modifier = Modifier
                         .fillMaxSize()
@@ -172,12 +178,13 @@ fun BootingSplash(
                             scaleX = 1.06f
                             scaleY = 1.06f
                         }
-                        .alpha(0.5f)
+                        .alpha(0.38f)
                         .blur(7.dp),
                     imageModel = { heroImageUrl },
                     imageOptions = ImageOptions(
                         contentScale = ContentScale.Crop,
                         contentDescription = null,
+                        colorFilter = desaturate,
                     ),
                     loading = {},
                     failure = {
@@ -185,55 +192,23 @@ fun BootingSplash(
                     },
                     previewPlaceholder = painterResource(R.drawable.ic_logo_color),
                 )
-            }
 
-            if (useHeroBackdrop) {
+                // Single soft legibility scrim: light at the top, building toward the
+                // bottom where the status/tips text sits. No heavy top/bottom bands.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.24f)),
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to scrimColor.copy(alpha = 0.48f),
+                                    0.4f to scrimColor.copy(alpha = 0.48f),
+                                    1.0f to scrimColor.copy(alpha = 0.62f),
+                                ),
+                            ),
+                        ),
                 )
             }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        scrimColor.copy(alpha = if (useHeroBackdrop) 0.42f else 0f),
-                    ),
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.76f else 0f),
-                                0.16f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.56f else 0f),
-                                0.38f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.26f else 0f),
-                                0.62f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.32f else 0f),
-                                1.0f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.74f else 0f),
-                            ),
-                        ),
-                    ),
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colorStops = arrayOf(
-                                0.0f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.4f else 0f),
-                                0.14f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.18f else 0f),
-                                0.5f to Color.Transparent,
-                                0.86f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.18f else 0f),
-                                1.0f to scrimColor.copy(alpha = if (useHeroBackdrop) 0.4f else 0f),
-                            ),
-                        ),
-                    ),
-            )
 
             // Main content
             Column(
