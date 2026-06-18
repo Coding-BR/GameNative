@@ -139,6 +139,7 @@ class GOGManager @Inject constructor(
             if (result.isSuccess) {
                 val count = result.getOrNull() ?: 0
                 Timber.tag("GOG").i("Background sync completed: $count games synced")
+                backfillVerticalCovers()
                 return@withContext Result.success(Unit)
             } else {
                 val error = result.exceptionOrNull()
@@ -217,8 +218,15 @@ class GOGManager @Inject constructor(
                         val gameDetails = result.getOrNull()
                         if (gameDetails != null) {
                             Timber.tag("GOG").d("Got Game Details for ID: $id")
-                            val game = parseGameObject(gameDetails)
-                            if (game != null) {
+                            val parsedGame = parseGameObject(gameDetails)
+                            if (parsedGame != null) {
+                                // Only real (non-excluded) games are shown, so only fetch
+                                // their portrait cover to avoid wasting GamesDB requests.
+                                val game = if (parsedGame.exclude) {
+                                    parsedGame
+                                } else {
+                                    parsedGame.copy(verticalCoverUrl = GOGApiClient.getVerticalCoverUrl(id))
+                                }
                                 games.add(game)
                                 Timber.tag("GOG").d("Refreshed Game: ${game.title}")
                                 totalProcessed++
@@ -248,6 +256,31 @@ class GOGManager @Inject constructor(
         } catch (e: Exception) {
             Timber.e(e, "Failed to refresh GOG library")
             return@withContext Result.failure(e)
+        }
+    }
+
+    /**
+     * Backfill portrait covers for games already in the database that predate the
+     * vertical_cover_url column (or whose fetch previously failed). New games already
+     * get their cover during [refreshLibrary], so this only touches existing rows.
+     */
+    private suspend fun backfillVerticalCovers() = withContext(Dispatchers.IO) {
+        try {
+            val gameIds = gogGameDao.getGameIdsMissingVerticalCover()
+            if (gameIds.isEmpty()) return@withContext
+
+            Timber.tag("GOG").d("Backfilling vertical covers for ${gameIds.size} games")
+            var filled = 0
+            for (id in gameIds) {
+                val coverUrl = GOGApiClient.getVerticalCoverUrl(id)
+                if (coverUrl.isNotEmpty()) {
+                    gogGameDao.updateVerticalCoverUrl(id, coverUrl)
+                    filled++
+                }
+            }
+            Timber.tag("GOG").i("Backfilled $filled vertical covers")
+        } catch (e: Exception) {
+            Timber.tag("GOG").w(e, "Failed to backfill vertical covers")
         }
     }
 
