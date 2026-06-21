@@ -3431,7 +3431,6 @@ object WorkshopManager {
                         val symlinker = WorkshopSymlinker()
                         val result = symlinker.sync(
                             effectiveStrategy, itemsForSync, workshopContentDir, titlesByItemId,
-                            useIdNames = bionicSteam,
                         )
                         if (result.hasErrors) {
                             result.errors.forEach { (k, v) ->
@@ -3515,7 +3514,6 @@ object WorkshopManager {
                             val result = symlinker.sync(
                                 WorkshopModPathStrategy.SymlinkIntoDir(targets),
                                 activeItemDirs, workshopContentDir, titlesByItemId,
-                                useIdNames = bionicSteam,
                             )
                             Timber.tag(TAG).i(
                                 "Unity AppData mod sync to ${targets.first().absolutePath}: created=${result.created}"
