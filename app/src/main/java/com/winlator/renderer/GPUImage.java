@@ -26,7 +26,7 @@ public class GPUImage extends Texture {
             this.width = nativeGetWidth(hardwareBufferPtr);
             this.height = nativeGetHeight(hardwareBufferPtr);
             for (int i = 0; i < 3; i++)
-                swapchainAhbs[i] = createHardwareBuffer(width, height);
+                swapchainAhbs[i] = createScanoutHardwareBuffer(width, height);
             if (virtualData == null) {
                 System.err.println("Error: Failed to lock hardware buffer");
                 destroyHardwareBuffer(hardwareBufferPtr);
@@ -154,6 +154,8 @@ public class GPUImage extends Texture {
     private native long hardwareBufferFromSocket(int fd);
 
     private native long createHardwareBuffer(short width, short height);
+
+    private native long createScanoutHardwareBuffer(short width, short height);
 
     private native void destroyHardwareBuffer(long hardwareBufferPtr);
 
