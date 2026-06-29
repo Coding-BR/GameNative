@@ -606,7 +606,6 @@ class GOGService : Service() {
                                 }
                             } else {
                                 Timber.tag("GOG").i("[Cloud Saves] No save changes found for $appId")
-                                return@withContext true
                             }
                         } catch (e: CancellationException) {
                             throw e
