@@ -634,6 +634,55 @@ class GOGService : Service() {
                 return@withContext false
             }
         }
+
+        data class GogConflict(
+            val localTimestamp: Long,
+            val remoteTimestamp: Long,
+        )
+
+        /**
+         * Check every save location for a conflict (both local and cloud changed since the last
+         * sync) WITHOUT uploading or downloading anything. Returns the first conflicting location's
+         * timestamps (millis), or null if there is no conflict. Does not take the sync lock so it
+         * can run before the real sync.
+         */
+        suspend fun detectCloudSaveConflict(
+            context: Context,
+            appId: String,
+        ): GogConflict? = withContext(Dispatchers.IO) {
+            try {
+                val instance = getInstance() ?: return@withContext null
+                if (!GOGAuthManager.hasStoredCredentials(context)) return@withContext null
+
+                val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
+                val game = instance.gogManager.getGameFromDbById(gameId.toString()) ?: return@withContext null
+                val saveLocations = instance.gogManager.getSaveDirectoryPath(context, appId, game.title)
+                    ?: return@withContext null
+
+                for (location in saveLocations) {
+                    if (location.clientSecret.isEmpty()) continue
+                    val timestamp = instance.gogManager
+                        .getCloudSaveSyncTimestamp(appId, location.name).toLongOrNull() ?: 0L
+                    val conflict = GOGCloudSavesManager(context).detectConflict(
+                        clientId = location.clientId,
+                        clientSecret = location.clientSecret,
+                        localPath = location.location,
+                        dirname = location.name,
+                        lastSyncTimestamp = timestamp,
+                    )
+                    if (conflict != null) {
+                        Timber.tag("GOG").i("[Cloud Saves] Conflict in '${location.name}' for $appId")
+                        return@withContext GogConflict(conflict.localTimestamp, conflict.remoteTimestamp)
+                    }
+                }
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.tag("GOG").e(e, "[Cloud Saves] Conflict detection failed for $appId")
+                null
+            }
+        }
     }
 
     private lateinit var notificationHelper: NotificationHelper
