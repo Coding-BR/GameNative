@@ -658,12 +658,13 @@ class GOGService : Service() {
                 val game = instance.gogManager.getGameFromDbById(gameId.toString()) ?: return@withContext null
                 val saveLocations = instance.gogManager.getSaveDirectoryPath(context, appId, game.title)
                     ?: return@withContext null
+                val manager = GOGCloudSavesManager(context)
 
                 for (location in saveLocations) {
                     if (location.clientSecret.isEmpty()) continue
                     val timestamp = instance.gogManager
                         .getCloudSaveSyncTimestamp(appId, location.name).toLongOrNull() ?: 0L
-                    val conflict = GOGCloudSavesManager(context).detectConflict(
+                    val conflict = manager.detectConflict(
                         clientId = location.clientId,
                         clientSecret = location.clientSecret,
                         localPath = location.location,
