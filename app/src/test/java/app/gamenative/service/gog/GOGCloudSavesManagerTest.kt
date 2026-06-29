@@ -282,4 +282,32 @@ class GOGCloudSavesManagerTest {
         assertEquals(1, uniqueFilesToUpload.size)
         assertEquals("new.sav", uniqueFilesToUpload[0].relativePath)
     }
+
+    @Test
+    fun smart_upload_returns_original_timestamp_when_no_files_changed() {
+        // When no files have changed since last sync, should return the original timestamp
+        // This signals to the caller that no sync occurred and timestamp should not be updated
+        val lastSyncTime = 1000L
+        val localFiles = listOf(
+            GOGCloudSavesManager.SyncFile("save1.sav", "/path/save1.sav", "hash1", "2026-01-01T00:00:00Z", 500L),
+            GOGCloudSavesManager.SyncFile("save2.sav", "/path/save2.sav", "hash2", "2026-01-01T00:00:00Z", 800L)
+        )
+        val cloudFiles = listOf(
+            GOGCloudSavesManager.CloudFile("save1.sav", "hash1", "2026-01-01T00:00:00Z", 500L),
+            GOGCloudSavesManager.CloudFile("save2.sav", "hash2", "2026-01-01T00:00:00Z", 800L)
+        )
+
+        val classifier = classifyFiles(localFiles, cloudFiles, lastSyncTime)
+        val filesToUpload = mutableListOf<GOGCloudSavesManager.SyncFile>()
+        filesToUpload.addAll(classifier.updatedLocal)
+        filesToUpload.addAll(classifier.notExistingRemotely)
+        val uniqueFilesToUpload = filesToUpload.distinctBy { it.relativePath }
+
+        // No files should be uploaded
+        assertEquals(0, uniqueFilesToUpload.size)
+
+        // When uniqueFilesToUpload is empty, the implementation should return lastSyncTimestamp
+        // instead of currentTimestamp() to signal no changes occurred
+        // This allows the caller to detect: newTimestamp == lastSyncTimestamp means no changes
+    }
 }

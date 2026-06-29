@@ -241,6 +241,7 @@ class GOGCloudSavesManager(
                     }
                 } else {
                     Timber.tag("GOG-CloudSaves").i("Smart upload: No files changed since last sync, skipping upload")
+                    return@withContext lastSyncTimestamp
                 }
                 return@withContext currentTimestamp()
             }
