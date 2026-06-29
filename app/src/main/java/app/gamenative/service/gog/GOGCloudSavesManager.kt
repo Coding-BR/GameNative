@@ -221,9 +221,23 @@ class GOGCloudSavesManager(
             }
 
             if (preferredAction == "upload" && localFiles.isNotEmpty()) {
-                Timber.tag("GOG-CloudSaves").i("Forcing upload of ${localFiles.size} file(s) (user requested)")
-                localFiles.forEach { file ->
-                    uploadFile(credentials.userId, clientId, dirname, file, credentials.accessToken)
+                // Use classifier to intelligently determine which files need uploading
+                val classifier = classifyFiles(localFiles, cloudFiles, lastSyncTimestamp)
+                val filesToUpload = mutableListOf<SyncFile>()
+
+                // Upload files that were updated locally since last sync
+                filesToUpload.addAll(classifier.updatedLocal)
+
+                // Upload files that don't exist remotely
+                filesToUpload.addAll(classifier.notExistingRemotely)
+
+                if (filesToUpload.isNotEmpty()) {
+                    Timber.tag("GOG-CloudSaves").i("Smart upload: ${filesToUpload.size} file(s) changed since last sync (out of ${localFiles.size} total)")
+                    filesToUpload.forEach { file ->
+                        uploadFile(credentials.userId, clientId, dirname, file, credentials.accessToken)
+                    }
+                } else {
+                    Timber.tag("GOG-CloudSaves").i("Smart upload: No files changed since last sync, skipping upload")
                 }
                 return@withContext currentTimestamp()
             }
