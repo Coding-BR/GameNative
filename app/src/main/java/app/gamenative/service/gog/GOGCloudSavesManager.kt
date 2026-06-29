@@ -231,9 +231,12 @@ class GOGCloudSavesManager(
                 // Upload files that don't exist remotely
                 filesToUpload.addAll(classifier.notExistingRemotely)
 
-                if (filesToUpload.isNotEmpty()) {
-                    Timber.tag("GOG-CloudSaves").i("Smart upload: ${filesToUpload.size} file(s) changed since last sync (out of ${localFiles.size} total)")
-                    filesToUpload.forEach { file ->
+                // Deduplicate by relativePath (new files can appear in both lists)
+                val uniqueFilesToUpload = filesToUpload.distinctBy { it.relativePath }
+
+                if (uniqueFilesToUpload.isNotEmpty()) {
+                    Timber.tag("GOG-CloudSaves").i("Smart upload: ${uniqueFilesToUpload.size} file(s) changed since last sync (out of ${localFiles.size} total)")
+                    uniqueFilesToUpload.forEach { file ->
                         uploadFile(credentials.userId, clientId, dirname, file, credentials.accessToken)
                     }
                 } else {
