@@ -1827,7 +1827,7 @@ fun preLaunchApp(
 
                 // Map an explicit user choice (from the conflict dialog) to a forced sync direction.
                 val gogPreferredAction = when (preferredSave) {
-                    SaveLocation.Local -> "upload" // "Keep local" -> push local to cloud
+                    SaveLocation.Local -> "forceupload" // "Keep local" -> force local up, past the conflict guard
                     SaveLocation.Remote -> "download" // "Keep remote" -> pull cloud down
                     SaveLocation.None -> null
                 }
