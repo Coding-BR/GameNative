@@ -640,13 +640,25 @@ class GOGCloudSavesManager(
                 val localFile = FileUtils.resolveCaseInsensitive(syncDir, file.relativePath)
                 localFile.parentFile?.mkdirs()
 
+                // Write file content
                 FileOutputStream(localFile).use { fos ->
                     fos.write(bytes)
                 }
 
-                // Preserve timestamp if available
-                file.updateTimestamp?.let { timestamp ->
-                    localFile.setLastModified(timestamp * 1000)
+                // Preserve cloud timestamp (must be done after closing the stream)
+                file.updateTimestamp?.let { cloudTimestamp ->
+                    val cloudMillis = cloudTimestamp * 1000
+                    val success = localFile.setLastModified(cloudMillis)
+                    if (success) {
+                        val actualMillis = localFile.lastModified()
+                        if (actualMillis == cloudMillis) {
+                            Timber.tag("GOG-CloudSaves").d("Preserved cloud timestamp for ${file.relativePath}: $cloudTimestamp seconds")
+                        } else {
+                            Timber.tag("GOG-CloudSaves").w("Timestamp mismatch for ${file.relativePath}: set $cloudMillis but got $actualMillis")
+                        }
+                    } else {
+                        Timber.tag("GOG-CloudSaves").w("Failed to set timestamp for ${file.relativePath}")
+                    }
                 }
 
                 Timber.tag("GOG-CloudSaves").i("Successfully downloaded: ${file.relativePath}")

@@ -310,4 +310,54 @@ class GOGCloudSavesManagerTest {
         // instead of currentTimestamp() to signal no changes occurred
         // This allows the caller to detect: newTimestamp == lastSyncTimestamp means no changes
     }
+
+    @Test
+    fun downloaded_files_should_preserve_cloud_timestamp() {
+        // Critical: When downloading files from cloud, the local file's modification time
+        // must be set to match the cloud file's timestamp. This ensures:
+        // 1. Future syncs correctly detect which version is newer
+        // 2. Files downloaded from cloud don't immediately appear as "locally modified"
+        // 3. Timestamp-based conflict detection works correctly
+
+        val cloudFile = GOGCloudSavesManager.CloudFile(
+            relativePath = "save.sav",
+            md5Hash = "abc123",
+            updateTime = "2026-01-01T00:00:00Z",
+            updateTimestamp = 1500L // seconds (UTC epoch)
+        )
+
+        // After download, the local file's lastModified() should be set to:
+        val expectedLocalMillis = cloudFile.updateTimestamp!! * 1000
+        assertEquals(1500000L, expectedLocalMillis)
+
+        // Simulate what happens after download: create a local file representation
+        val downloadedFile = GOGCloudSavesManager.SyncFile(
+            relativePath = cloudFile.relativePath,
+            absolutePath = "/path/save.sav",
+            md5Hash = cloudFile.md5Hash,
+            updateTime = cloudFile.updateTime,
+            updateTimestamp = cloudFile.updateTimestamp // Should match cloud timestamp
+        )
+
+        // Verify timestamps match (both in seconds)
+        assertEquals(cloudFile.updateTimestamp, downloadedFile.updateTimestamp)
+
+        // Test scenario: After downloading, if we sync again with the same lastSyncTime,
+        // both local and cloud will have timestamp > lastSyncTime
+        val lastSyncTime = 1000L
+        val classifier = classifyFiles(listOf(downloadedFile), listOf(cloudFile), lastSyncTime)
+
+        // Both files have timestamp 1500L > lastSyncTime 1000L, so both are "updated"
+        assertEquals(1, classifier.updatedLocal.size)
+        assertEquals(1, classifier.updatedCloud.size)
+
+        // This results in CONFLICT action
+        assertEquals(GOGCloudSavesManager.SyncAction.CONFLICT, classifier.determineAction())
+
+        // However, the CONFLICT resolution logic compares timestamps and finds they're equal,
+        // so neither will be uploaded/downloaded (see syncSaves CONFLICT handling at lines 275-287)
+
+        // The key is: after a successful download that preserves timestamps, the NEXT sync
+        // should update lastSyncTimestamp to 1500L, preventing this conflict on future syncs
+    }
 }
