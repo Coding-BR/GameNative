@@ -220,6 +220,16 @@ class GOGCloudSavesManager(
                 return@withContext currentTimestamp()
             }
 
+            // Explicit "keep local" choice from the conflict dialog: force-upload every local file so
+            // local wins, bypassing the conflict guard on the plain "upload" path below.
+            if (preferredAction == "forceupload" && localFiles.isNotEmpty()) {
+                Timber.tag("GOG-CloudSaves").i("Forcing upload of ${localFiles.size} file(s) (user requested)")
+                localFiles.forEach { file ->
+                    uploadFile(credentials.userId, clientId, dirname, file, credentials.accessToken)
+                }
+                return@withContext currentTimestamp()
+            }
+
             if (preferredAction == "upload" && localFiles.isNotEmpty()) {
                 // Use classifier to intelligently determine which files need uploading
                 val classifier = classifyFiles(localFiles, cloudFiles, lastSyncTimestamp)
