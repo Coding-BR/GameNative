@@ -70,6 +70,11 @@ public class Container {
     public static final String STEAM_TYPE_NORMAL = "normal";
     public static final String STEAM_TYPE_LIGHT = "light";
     public static final String STEAM_TYPE_ULTRALIGHT = "ultralight";
+    public static final String ROOT_PERFORMANCE_OFF = "off";
+    public static final String ROOT_PERFORMANCE_GLOBAL = "global";
+    public static final String ROOT_PERFORMANCE_SAFE = "safe";
+    public static final String ROOT_PERFORMANCE_PERFORMANCE = "performance";
+    public static final String ROOT_PERFORMANCE_EXTREME = "extreme";
     public static final String GLIBC = "glibc";
     public static final String BIONIC = "bionic";
     public static final byte MAX_DRIVE_LETTERS = 8;
@@ -98,6 +103,8 @@ public class Container {
     private byte startupSelection = STARTUP_SELECTION_AGGRESSIVE;
     private String cpuList;
     private String cpuListWoW64;
+    private String rootPerformanceProfile = ROOT_PERFORMANCE_OFF;
+    private boolean rootPerformanceProfileExplicit = false;
     private String desktopTheme = WineThemeManager.DEFAULT_DESKTOP_THEME;
     private String box86Version = DefaultVersion.BOX86;
     private String box64Version = DefaultVersion.BOX64;
@@ -434,6 +441,44 @@ public class Container {
         this.cpuListWoW64 = cpuListWoW64 != null && !cpuListWoW64.isEmpty() ? cpuListWoW64 : null;
     }
 
+    public boolean isRootPerformanceMode() {
+        return !ROOT_PERFORMANCE_OFF.equals(rootPerformanceProfile);
+    }
+
+    public void setRootPerformanceMode(boolean rootPerformanceMode) {
+        this.rootPerformanceProfile = rootPerformanceMode ? ROOT_PERFORMANCE_PERFORMANCE : ROOT_PERFORMANCE_OFF;
+        this.rootPerformanceProfileExplicit = true;
+    }
+
+    public String getRootPerformanceProfile() {
+        return rootPerformanceProfile;
+    }
+
+    public void setRootPerformanceProfile(String rootPerformanceProfile) {
+        this.rootPerformanceProfile = normalizeRootPerformanceProfile(rootPerformanceProfile);
+        this.rootPerformanceProfileExplicit = true;
+    }
+
+    public boolean hasRootPerformanceProfile() {
+        return rootPerformanceProfileExplicit;
+    }
+
+    public static String normalizeRootPerformanceProfile(String rootPerformanceProfile) {
+        String normalized = rootPerformanceProfile == null ? "" : rootPerformanceProfile.toLowerCase();
+        switch (normalized) {
+            case ROOT_PERFORMANCE_GLOBAL:
+                return ROOT_PERFORMANCE_GLOBAL;
+            case ROOT_PERFORMANCE_SAFE:
+                return ROOT_PERFORMANCE_SAFE;
+            case ROOT_PERFORMANCE_PERFORMANCE:
+                return ROOT_PERFORMANCE_PERFORMANCE;
+            case ROOT_PERFORMANCE_EXTREME:
+                return ROOT_PERFORMANCE_EXTREME;
+            default:
+                return ROOT_PERFORMANCE_OFF;
+        }
+    }
+
     public String getBox86Version() { return box86Version; }
 
     public void setBox86Version(String box86Version) { this.box86Version = box86Version; }
@@ -679,6 +724,8 @@ public class Container {
             data.put("envVars", envVars);
             data.put("cpuList", cpuList);
             data.put("cpuListWoW64", cpuListWoW64);
+            data.put("rootPerformanceMode", isRootPerformanceMode());
+            data.put("rootPerformanceProfile", rootPerformanceProfile);
             data.put("graphicsDriver", graphicsDriver);
             data.put("graphicsDriverVersion", graphicsDriverVersion); // Ensure this is added
             if (!graphicsDriverConfig.isEmpty()) data.put("graphicsDriverConfig", graphicsDriverConfig);
@@ -788,6 +835,12 @@ public class Container {
                     break;
                 case "cpuListWoW64" :
                     setCPUListWoW64(data.getString(key));
+                    break;
+                case "rootPerformanceMode" :
+                    setRootPerformanceMode(data.getBoolean(key));
+                    break;
+                case "rootPerformanceProfile" :
+                    setRootPerformanceProfile(data.getString(key));
                     break;
                 case "graphicsDriver" :
                     setGraphicsDriver(data.getString(key));

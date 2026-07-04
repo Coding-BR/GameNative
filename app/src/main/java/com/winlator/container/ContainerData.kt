@@ -35,6 +35,8 @@ data class ContainerData(
     val steamType: String = "normal",
     val cpuList: String = Container.getFallbackCPUList(),
     val cpuListWoW64: String = Container.getFallbackCPUListWoW64(),
+    val rootPerformanceMode: Boolean = false,
+    val rootPerformanceProfile: String = Container.ROOT_PERFORMANCE_GLOBAL,
     val wow64Mode: Boolean = true,
     val startupSelection: Byte = Container.STARTUP_SELECTION_ESSENTIAL,
     val box86Version: String = DefaultVersion.BOX86,
@@ -134,6 +136,8 @@ data class ContainerData(
                     "steamType" to state.steamType,
                     "cpuList" to state.cpuList,
                     "cpuListWoW64" to state.cpuListWoW64,
+                    "rootPerformanceMode" to state.rootPerformanceMode,
+                    "rootPerformanceProfile" to state.rootPerformanceProfile,
                     "wow64Mode" to state.wow64Mode,
                     "startupSelection" to state.startupSelection,
                     "box86Version" to state.box86Version,
@@ -203,6 +207,15 @@ data class ContainerData(
                     steamType = (savedMap["steamType"] as? String) ?: "normal",
                     cpuList = savedMap["cpuList"] as String,
                     cpuListWoW64 = savedMap["cpuListWoW64"] as String,
+                    rootPerformanceMode = (savedMap["rootPerformanceMode"] as? Boolean) ?: false,
+                    rootPerformanceProfile = Container.normalizeRootPerformanceProfile(
+                        (savedMap["rootPerformanceProfile"] as? String)
+                            ?: if ((savedMap["rootPerformanceMode"] as? Boolean) == true) {
+                                Container.ROOT_PERFORMANCE_PERFORMANCE
+                            } else {
+                                Container.ROOT_PERFORMANCE_OFF
+                            },
+                    ),
                     wow64Mode = savedMap["wow64Mode"] as Boolean,
                     startupSelection = savedMap["startupSelection"] as Byte,
                     box86Version = savedMap["box86Version"] as String,

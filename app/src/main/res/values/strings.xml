@@ -209,6 +209,16 @@
     <string name="open_file">Open File</string>
     <string name="download_file">Download File</string>
     <string name="processor_affinity">Processor Affinity</string>
+    <string name="root_performance_mode">Root performance mode</string>
+    <string name="root_performance_mode_description">Uses granted root to apply launch-time CPU/GPU scheduling optimizations. Existing containers also use this global setting.</string>
+    <string name="root_performance_profile">Root performance profile</string>
+    <string name="root_performance_profile_description">Optional root profile used at game launch. Falls back automatically when root is unavailable.</string>
+    <string name="root_performance_global_description">Default root profile for new containers and containers without an explicit override.</string>
+    <string name="root_performance_use_global">Use global default</string>
+    <string name="root_performance_off">Off</string>
+    <string name="root_performance_safe">Safe</string>
+    <string name="root_performance_performance">Performance</string>
+    <string name="root_performance_extreme">Extreme experimental</string>
     <string name="bring_to_front">Bring to Front</string>
     <string name="end_process">End Process</string>
     <string name="new_file">New File</string>

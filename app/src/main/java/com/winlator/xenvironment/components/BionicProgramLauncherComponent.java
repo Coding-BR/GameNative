@@ -30,6 +30,7 @@ import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.GPUInformation;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.core.WineInfo;
 import com.winlator.fexcore.FEXCorePreset;
@@ -105,6 +106,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                 extractBox64Files();
             if (preUnpack != null) preUnpack.run();
             pid = execGuestProgram();
+            RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("BionicProgramLauncherComponent", "Process " + pid + " started");
             SteamService.setKeepAlive(true);
         }

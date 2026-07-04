@@ -66,7 +66,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import app.gamenative.BuildConfig
 import app.gamenative.PrefManager
 import app.gamenative.PluviaApp
 import app.gamenative.R
@@ -816,7 +815,7 @@ private fun LibraryScreenContent(
 
                         // X button - add custom game
                         KeyEvent.KEYCODE_BUTTON_X -> {
-                            if (!BuildConfig.MODERN_ANDROID && selectedAppId == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                            if (selectedAppId == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
                                 onAddCustomGameClick()
                                 true
                             } else {
@@ -1044,17 +1043,12 @@ private fun LibraryScreenContent(
                         labelResId = R.string.search,
                         onClick = { onIsSearching(true) },
                     ),
-                ) + if (!BuildConfig.MODERN_ANDROID) {
-                    listOf(
-                        GamepadAction(
-                            button = GamepadButton.X,
-                            labelResId = R.string.action_add_game,
-                            onClick = onAddCustomGameClick,
-                        ),
-                    )
-                } else {
-                    emptyList()
-                }
+                    GamepadAction(
+                        button = GamepadButton.X,
+                        labelResId = R.string.action_add_game,
+                        onClick = onAddCustomGameClick,
+                    ),
+                )
             }
 
             GamepadActionBar(

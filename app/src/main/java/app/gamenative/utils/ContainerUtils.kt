@@ -129,6 +129,8 @@ object ContainerUtils {
             launchBionicSteam = PrefManager.launchBionicSteam,
             cpuList = PrefManager.cpuList,
             cpuListWoW64 = PrefManager.cpuListWoW64,
+            rootPerformanceMode = PrefManager.rootPerformanceMode,
+            rootPerformanceProfile = Container.ROOT_PERFORMANCE_GLOBAL,
             wow64Mode = PrefManager.wow64Mode,
             startupSelection = PrefManager.startupSelection.toByte(),
             box86Version = PrefManager.box86Version,
@@ -194,6 +196,7 @@ object ContainerUtils {
         PrefManager.launchBionicSteam = containerData.launchBionicSteam
         PrefManager.cpuList = containerData.cpuList
         PrefManager.cpuListWoW64 = containerData.cpuListWoW64
+        PrefManager.rootPerformanceProfile = containerData.rootPerformanceProfile
         PrefManager.wow64Mode = containerData.wow64Mode
         PrefManager.startupSelection = containerData.startupSelection.toInt()
         PrefManager.box86Version = containerData.box86Version
@@ -315,6 +318,8 @@ object ContainerUtils {
             steamType = container.getSteamType(),
             cpuList = container.cpuList,
             cpuListWoW64 = container.cpuListWoW64,
+            rootPerformanceMode = container.isRootPerformanceMode,
+            rootPerformanceProfile = container.rootPerformanceProfile,
             wow64Mode = container.isWoW64Mode,
             startupSelection = container.startupSelection.toByte(),
             box86Version = container.box86Version,
@@ -504,6 +509,7 @@ object ContainerUtils {
         container.setSteamType(containerData.steamType)
         container.cpuList = containerData.cpuList
         container.cpuListWoW64 = containerData.cpuListWoW64
+        container.rootPerformanceProfile = containerData.rootPerformanceProfile
         container.isWoW64Mode = containerData.wow64Mode
         container.startupSelection = containerData.startupSelection
         container.box86Version = containerData.box86Version
@@ -864,6 +870,8 @@ object ContainerUtils {
                 envVars = PrefManager.envVars,
                 cpuList = PrefManager.cpuList,
                 cpuListWoW64 = PrefManager.cpuListWoW64,
+                rootPerformanceMode = PrefManager.rootPerformanceMode,
+                rootPerformanceProfile = Container.ROOT_PERFORMANCE_GLOBAL,
                 graphicsDriver = PrefManager.graphicsDriver,
                 graphicsDriverVersion = PrefManager.graphicsDriverVersion,
                 graphicsDriverConfig = PrefManager.graphicsDriverConfig,

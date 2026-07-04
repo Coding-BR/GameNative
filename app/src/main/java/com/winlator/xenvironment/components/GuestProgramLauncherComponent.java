@@ -15,6 +15,7 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.WineInfo;
 import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
@@ -62,6 +63,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             stop();
             extractBox86_64Files();
             pid = execGuestProgram();
+            RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("GuestProgramLauncherComponent", "Process " + pid + " started");
         }
     }

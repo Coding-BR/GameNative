@@ -19,6 +19,7 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.GPUInformation;
 import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.ImageFs;
@@ -74,6 +75,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
             copyDefaultBox64RCFile();
             if (preUnpack != null) preUnpack.run();
             pid = execGuestProgram();
+            RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("GlibcProgramLauncherComponent", "Process " + pid + " started");
             SteamService.setKeepAlive(true);
         }

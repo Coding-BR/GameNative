@@ -17,6 +17,7 @@ import app.gamenative.ui.component.dialog.Box64PresetsDialog
 import app.gamenative.ui.component.dialog.ContainerConfigDialog
 import app.gamenative.ui.component.dialog.FEXCorePresetsDialog
 import app.gamenative.ui.component.dialog.OrientationDialog
+import app.gamenative.ui.component.settings.SettingsListDropdown
 import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.theme.settingsTileColors
 import app.gamenative.ui.theme.settingsTileColorsAlt
@@ -24,6 +25,8 @@ import app.gamenative.utils.ContainerUtils
 import com.alorma.compose.settings.ui.SettingsGroup
 import com.alorma.compose.settings.ui.SettingsMenuLink
 import com.alorma.compose.settings.ui.SettingsSwitch
+import com.winlator.container.Container
+import com.winlator.core.RootPerformanceHelper
 
 @Composable
 fun SettingsGroupEmulation() {
@@ -90,6 +93,34 @@ fun SettingsGroupEmulation() {
             title = { Text(text = stringResource(R.string.settings_emulation_default_config_title)) },
             subtitle = { Text(text = stringResource(R.string.settings_emulation_default_config_subtitle)) },
             onClick = { showConfigDialog = true },
+        )
+        val rootProfileValues = listOf(
+            Container.ROOT_PERFORMANCE_OFF,
+            Container.ROOT_PERFORMANCE_SAFE,
+            Container.ROOT_PERFORMANCE_PERFORMANCE,
+            Container.ROOT_PERFORMANCE_EXTREME,
+        )
+        val rootProfileItems = listOf(
+            stringResource(R.string.root_performance_off),
+            stringResource(R.string.root_performance_safe),
+            stringResource(R.string.root_performance_performance),
+            stringResource(R.string.root_performance_extreme),
+        )
+        var rootPerformanceProfile by rememberSaveable { mutableStateOf(PrefManager.rootPerformanceProfile) }
+        SettingsListDropdown(
+            colors = settingsTileColors(),
+            value = rootProfileValues.indexOf(rootPerformanceProfile).coerceAtLeast(0),
+            items = rootProfileItems,
+            title = { Text(text = stringResource(R.string.root_performance_profile)) },
+            subtitle = { Text(text = stringResource(R.string.root_performance_global_description)) },
+            onItemSelected = { index ->
+                val profile = rootProfileValues.getOrElse(index) { Container.ROOT_PERFORMANCE_OFF }
+                rootPerformanceProfile = profile
+                PrefManager.rootPerformanceProfile = profile
+                if (profile != Container.ROOT_PERFORMANCE_OFF) {
+                    RootPerformanceHelper.requestRootAccessForSettings()
+                }
+            },
         )
         var autoApplyKnownConfig by rememberSaveable { mutableStateOf(PrefManager.autoApplyKnownConfig) }
         SettingsSwitch(

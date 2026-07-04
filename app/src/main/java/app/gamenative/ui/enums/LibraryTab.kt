@@ -1,7 +1,6 @@
 package app.gamenative.ui.enums
 
 import androidx.annotation.StringRes
-import app.gamenative.BuildConfig
 import app.gamenative.R
 
 enum class LibraryTab(
@@ -69,12 +68,8 @@ enum class LibraryTab(
     );
 
     companion object {
-        /**
-         * Tabs shown in the UI. Custom (LOCAL) games rely on all-files access, which only the
-         * legacy storage flavors have, so the tab is hidden on modern (scoped-storage) builds.
-         */
         val visibleEntries: List<LibraryTab>
-            get() = if (BuildConfig.MODERN_ANDROID) entries.filter { it != LOCAL } else entries
+            get() = entries
 
         fun LibraryTab.next(): LibraryTab {
             val values = visibleEntries

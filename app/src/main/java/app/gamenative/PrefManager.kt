@@ -580,6 +580,40 @@ object PrefManager {
             setPref(CPU_LIST_WOW64, value)
         }
 
+    private val ROOT_PERFORMANCE_MODE = booleanPreferencesKey("root_performance_mode")
+    var rootPerformanceMode: Boolean
+        get() = getPref(ROOT_PERFORMANCE_MODE, false)
+        set(value) {
+            setPref(ROOT_PERFORMANCE_MODE, value)
+        }
+
+    private val ROOT_PERFORMANCE_PROFILE = stringPreferencesKey("root_performance_profile")
+    var rootPerformanceProfile: String
+        get() {
+            val normalized = Container.normalizeRootPerformanceProfile(
+                getPref(
+                ROOT_PERFORMANCE_PROFILE,
+                if (rootPerformanceMode) {
+                    Container.ROOT_PERFORMANCE_PERFORMANCE
+                } else {
+                    Container.ROOT_PERFORMANCE_OFF
+                },
+                ),
+            )
+            return if (normalized == Container.ROOT_PERFORMANCE_GLOBAL) {
+                Container.ROOT_PERFORMANCE_OFF
+            } else {
+                normalized
+            }
+        }
+        set(value) {
+            val normalized = Container.normalizeRootPerformanceProfile(value).let {
+                if (it == Container.ROOT_PERFORMANCE_GLOBAL) Container.ROOT_PERFORMANCE_OFF else it
+            }
+            setPref(ROOT_PERFORMANCE_PROFILE, normalized)
+            rootPerformanceMode = normalized != Container.ROOT_PERFORMANCE_OFF
+        }
+
     private val WOW64_MODE = booleanPreferencesKey("wow64_mode")
     var wow64Mode: Boolean
         get() = getPref(WOW64_MODE, true)
