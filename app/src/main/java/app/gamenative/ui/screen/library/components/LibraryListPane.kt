@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -256,7 +257,8 @@ internal fun LibraryListPane(
                                 key = { listIndex -> state.appInfoList[listIndex].appId },
                             ) { listIndex ->
                                 val item = state.appInfoList[listIndex]
-                                var isVisible by remember(item.appId) { mutableStateOf(false) }
+                                val animateFade = remember(item.appId) { !listState.isScrollInProgress }
+                                var isVisible by remember(item.appId) { mutableStateOf(!animateFade) }
                                 val alpha by animateFloatAsState(
                                     targetValue = if (isVisible) 1f else 0f,
                                     animationSpec = spring(
@@ -266,12 +268,15 @@ internal fun LibraryListPane(
                                     label = "fadeIn",
                                 )
 
-                                LaunchedEffect(item.appId) {
-                                    delay((item.index % 8) * 30L)
-                                    isVisible = true
+                                if (animateFade) {
+                                    LaunchedEffect(item.appId) {
+                                        val delayTime = maxOf(0, item.index) % 8 * 30L
+                                        delay(delayTime)
+                                        isVisible = true
+                                    }
                                 }
 
-                                Box(modifier = Modifier.alpha(alpha)) {
+                                Box(modifier = Modifier.graphicsLayer { this.alpha = alpha }) {
                                     val appItemModifier = if (firstGridItemFocusRequester != null &&
                                         focusTargetListIndex != null &&
                                         listIndex == focusTargetListIndex
