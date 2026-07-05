@@ -193,7 +193,11 @@ jobs:
     - name: Build changelog text
       id: changelog
       run: |
-        text=$(jq -r '.commits[] | "• " + (.message | split("\n")[0]) + " (" + .id[0:7] + ")"' "$GITHUB_EVENT_PATH")
+        if jq -e '.commits' "$GITHUB_EVENT_PATH" >/dev/null 2>&1; then
+          text=$(jq -r '.commits[] | "• " + (.message | split("\n")[0]) + " (" + .id[0:7] + ")"' "$GITHUB_EVENT_PATH")
+        else
+          text="Manual trigger / workflow dispatch"
+        fi
         # Stable random delimiter so newlines in $text can't terminate the heredoc.
         delim="EOF_$(openssl rand -hex 8)"
         {
