@@ -94,21 +94,22 @@ jobs:
 
       - name: Extract APKs from Bundles
         run: |
-          java -jar tools/bundletool-all-1.17.2.jar build-apks \
-            --bundle=app-release.aab \
-            --output=app-release.apks \
-            --mode=universal
-          unzip -o app-release.apks universal.apk
-          java -jar tools/bundletool-all-1.17.2.jar build-apks \
-            --bundle=app-modern-release.aab \
-            --output=app-modern-release.apks \
-            --mode=universal
-          unzip -p app-modern-release.apks universal.apk > universal-modern.apk
-          java -jar tools/bundletool-all-1.17.2.jar build-apks \
-            --bundle=app-legacy-xr-release.aab \
-            --output=app-legacy-xr-release.apks \
-            --mode=universal
-          unzip -p app-legacy-xr-release.apks universal.apk > universal-legacy-xr.apk
+          extract_universal_apk() {
+            local bundle="$1"
+            local apks="$2"
+            local apk="$3"
+
+            java -Xmx2g -jar tools/bundletool-all-1.17.2.jar build-apks \
+              --bundle="$bundle" \
+              --output="$apks" \
+              --mode=universal
+            unzip -p "$apks" universal.apk > "$apk"
+            rm -f "$apks"
+          }
+
+          extract_universal_apk app-release.aab app-release.apks universal.apk
+          extract_universal_apk app-modern-release.aab app-modern-release.apks universal-modern.apk
+          extract_universal_apk app-legacy-xr-release.aab app-legacy-xr-release.apks universal-legacy-xr.apk
 
       - name: Copy lineage file
         run: |
@@ -128,9 +129,31 @@ jobs:
           if [ ! -d "$BUILD_TOOLS_DIR" ]; then
             BUILD_TOOLS_DIR="${ANDROID_SDK_ROOT}/build-tools/34.0.0"
           fi
-          if [ -f app/keystores/keystore ] && [ -s app/keystores/keystore ] && [ -f app/keystores/prod.keystore ] && [ -s app/keystores/prod.keystore ]; then
-            echo "Signing with production keys..."
+          if [ -z "$DEBUG_ALIAS" ] || [ -z "$DEBUG_KEY_PASS" ] || [ -z "$DEBUG_STORE_PASS" ]; then
+            echo "Signing secrets are missing; generating temporary CI debug keystore."
+            keytool -genkeypair \
+              -keystore app/keystores/ci-debug.keystore \
+              -storepass android \
+              -keypass android \
+              -alias ci-debug \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=GameNative CI,O=GameNative,C=BR"
             for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+              "${BUILD_TOOLS_DIR}/apksigner" sign \
+                --ks app/keystores/ci-debug.keystore \
+                --ks-key-alias ci-debug \
+                --ks-pass pass:android \
+                --key-pass pass:android \
+                --out "${apk%.apk}-signed.apk" \
+                "$apk"
+              mv "${apk%.apk}-signed.apk" "$apk"
+            done
+            exit 0
+          fi
+          for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+            if [ -n "$PROD_ALIAS" ] && [ -n "$PROD_KEY_PASS" ] && [ -n "$PROD_STORE_PASS" ]; then
               "${BUILD_TOOLS_DIR}/apksigner" sign \
                 --lineage app/keystores/prod-debug.lineage \
                 --ks app/keystores/keystore \
@@ -143,21 +166,18 @@ jobs:
                 --key-pass pass:$PROD_KEY_PASS \
                 --out "${apk%.apk}-signed.apk" \
                 "$apk"
-              mv "${apk%.apk}-signed.apk" "$apk"
-            done
-          else
-            echo "Keystore secrets not found. Generating a debug keystore and signing with it..."
-            keytool -genkey -v -keystore app/keystores/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+            else
+              echo "Production signing secrets are missing; signing with debug keystore only."
               "${BUILD_TOOLS_DIR}/apksigner" sign \
-                --ks app/keystores/debug.keystore \
-                --ks-pass pass:android \
-                --key-pass pass:android \
+                --ks app/keystores/keystore \
+                --ks-key-alias "$DEBUG_ALIAS" \
+                --ks-pass pass:$DEBUG_STORE_PASS \
+                --key-pass pass:$DEBUG_KEY_PASS \
                 --out "${apk%.apk}-signed.apk" \
                 "$apk"
-              mv "${apk%.apk}-signed.apk" "$apk"
-            done
-          fi
+            fi
+            mv "${apk%.apk}-signed.apk" "$apk"
+          done
 
       - name: Upload APKs for next job
         uses: actions/upload-artifact@v4
