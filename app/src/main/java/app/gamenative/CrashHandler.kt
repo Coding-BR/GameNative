@@ -90,6 +90,12 @@ class CrashHandler(
     }
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
+        if (throwable.javaClass.name.contains("AsyncJobFailedException") || 
+            throwable.cause?.javaClass?.name?.contains("AsyncJobFailedException") == true) {
+            android.util.Log.e("CrashHandler", "Ignoring transient Steam client exception", throwable)
+            return
+        }
+
         PrefManager.recentlyCrashed = true
 
         saveCrashToFile(throwable)
