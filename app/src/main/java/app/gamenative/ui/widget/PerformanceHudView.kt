@@ -318,7 +318,10 @@ class PerformanceHudView(
             gpuValue = gpuPercent?.toFloat(),
             fps = String.format(Locale.US, "FPS %.1f", currentFps),
             cpu = cpuPercent?.let { "CPU $it%" },
-            gpu = gpuPercent?.let { "GPU $it%" },
+            gpu = gpuPercent?.let { percent ->
+                val freq = readGpuFrequencyMhz()
+                if (freq != null) "GPU $percent% $freq MHz" else "GPU $percent%"
+            } ?: readGpuFrequencyMhz()?.let { freq -> "GPU $freq MHz" },
             ram = "RAM ${readUsedRamText()}",
             battery = batterySnapshot.percent?.let { "BAT $it%" },
             power = batterySnapshot.powerWatts?.let { watts ->
@@ -814,6 +817,25 @@ class PerformanceHudView(
             Timber.d("[HUD] GPU temp: %d°C from %s", reading.celsius, reading.source)
         }
         return reading?.celsius
+    }
+
+    private fun readGpuFrequencyMhz(): Int? {
+        val paths = listOf(
+            "/sys/class/kgsl/kgsl-3d0/clock_mhz",
+            "/sys/class/kgsl/kgsl-3d0/gpuclk",
+            "/sys/class/devfreq/gpufreq/cur_freq",
+            "/sys/class/devfreq/gpu/cur_freq"
+        )
+        for (path in paths) {
+            val file = File(path)
+            if (file.canRead()) {
+                val raw = readFirstLine(path)?.trim() ?: continue
+                val freq = raw.toLongOrNull() ?: continue
+                if (freq <= 0L) continue
+                return if (freq > 50000) (freq / 1_000_000).toInt() else freq.toInt()
+            }
+        }
+        return null
     }
 
     /**
