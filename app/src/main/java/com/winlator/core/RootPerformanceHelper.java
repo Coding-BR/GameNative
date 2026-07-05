@@ -51,6 +51,11 @@ public final class RootPerformanceHelper {
             Log.w(TAG, "Root performance mode enabled but launch pid is invalid: " + mainPid);
             return;
         }
+        if (isInstallerOrLauncherWorkload(container.getExecutablePath())) {
+            Log.i(TAG, "Root performance skipped for installer/launcher workload: "
+                    + container.getExecutablePath());
+            return;
+        }
 
         Thread worker = new Thread(() -> applyInternal(container, mainPid, profile), "root-performance-helper");
         worker.setDaemon(true);
@@ -113,7 +118,7 @@ public final class RootPerformanceHelper {
         }
 
         if (profile.atLeast(Profile.PERFORMANCE)) {
-            applySystemPerformanceProfile(mainPid, profile);
+            Log.i(TAG, "Skipping system-wide root performance writes for Android stability");
         }
         Set<Integer> pids = applyProcessOptimizationsForSession(
                 mainPid,
@@ -122,9 +127,6 @@ public final class RootPerformanceHelper {
                 container.getExecutablePath(),
                 profile);
         Log.i(TAG, "Root performance profile " + profile.id + " applied to " + pids.size() + " process(es): " + pids);
-        if (profile.atLeast(Profile.PERFORMANCE)) {
-            restoreSystemPerformanceProfile(mainPid);
-        }
     }
 
     private static Set<Integer> applyProcessOptimizationsForSession(
@@ -169,6 +171,7 @@ public final class RootPerformanceHelper {
 
     private static boolean isTargetProcess(String name, String cmdline) {
         String lower = ((name == null ? "" : name) + " " + (cmdline == null ? "" : cmdline)).toLowerCase();
+        if (isInstallerOrLauncherWorkload(lower)) return false;
         return lower.contains("wine")
                 || lower.contains("wineserver")
                 || lower.contains("box64")
@@ -178,6 +181,23 @@ public final class RootPerformanceHelper {
                 || lower.contains("pulseaudio")
                 || lower.contains("steamclient_loader")
                 || lower.contains("app.gamenative/files");
+    }
+
+    private static boolean isInstallerOrLauncherWorkload(String value) {
+        if (value == null || value.isEmpty()) return false;
+        String lower = value.replace('\\', '/').toLowerCase();
+        return lower.contains("/installers/")
+                || lower.contains("installer")
+                || lower.contains("setup")
+                || lower.contains("installshield")
+                || lower.contains("vcredist")
+                || lower.contains("dxsetup")
+                || lower.contains("redist")
+                || lower.contains("rockstar")
+                || lower.contains("socialclub")
+                || lower.contains("launcher")
+                || lower.contains("updater")
+                || lower.contains("update");
     }
 
     private static String readCmdline(int pid) {
