@@ -779,7 +779,9 @@ class LibraryViewModel @Inject constructor(
             // Save game counts for skeleton loaders (only when not searching, to get accurate counts)
             // This needs to happen before filtering by source, so we save the total counts
             if (currentState.searchQuery.isEmpty()) {
-                PrefManager.customGamesCount = customGameItems.size
+                if (includeOpen) {
+                    PrefManager.customGamesCount = customGameItems.size
+                }
                 PrefManager.steamGamesCount = steamFilteredBeforeCompatibility.size
                 PrefManager.gogGamesCount = filteredGOGGames.size
                 PrefManager.gogInstalledGamesCount = gogInstalledCount
