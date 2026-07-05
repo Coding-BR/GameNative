@@ -95,6 +95,7 @@ public final class RootPerformanceHelper {
             return;
         }
         Log.i(TAG, "Root available; applying launch-time optimizations for profile " + profile.id);
+        applyAdditionalRootOptimizations();
 
         String cpuList = container.getCPUList(true);
         if (profile.atLeast(Profile.PERFORMANCE)) {
@@ -156,6 +157,7 @@ public final class RootPerformanceHelper {
             }
         }
 
+        restoreAdditionalRootOptimizations();
         return optimizedPids;
     }
 
@@ -347,6 +349,20 @@ public final class RootPerformanceHelper {
         } else {
             Log.w(TAG, "Failed to restore system root performance profile for pid " + mainPid + ". " + result.summary());
         }
+    }
+
+    private static void applyAdditionalRootOptimizations() {
+        Log.i(TAG, "Applying additional root performance tweaks: max_map_count, gpu throttling, fan control");
+        runSuCommand("sysctl -w vm.max_map_count=1000000", 2000);
+        runSuCommand("echo 0 > /sys/class/kgsl/kgsl-3d0/throttling", 2000);
+        runSuCommand("echo 1 > /sys/kernel/fan/fan_enable", 2000);
+        runSuCommand("echo 4 > /sys/kernel/fan/fan_speed_level", 2000);
+    }
+
+    private static void restoreAdditionalRootOptimizations() {
+        Log.i(TAG, "Restoring additional root performance tweaks on session end");
+        runSuCommand("echo 1 > /sys/class/kgsl/kgsl-3d0/throttling", 2000);
+        runSuCommand("echo 2 > /sys/kernel/fan/fan_speed_level", 2000);
     }
 
     private static String getSnapshotPath(int mainPid) {
