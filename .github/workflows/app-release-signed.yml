@@ -37,11 +37,15 @@ jobs:
         KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
       run: |
         mkdir -p app/keystores
-        echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
-        echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
-        echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
-        echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
-        echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
+        if [ -n "$KEYSTORE" ]; then
+          echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
+          echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
+          echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
+          echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
+          echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
+        else
+          echo "KEYSTORE secret not set, skipping keystore configuration."
+        fi
 
     - name: Configure Production Keystore
       env:
@@ -51,12 +55,16 @@ jobs:
         PROD_KEYSTORE_STORE_PASSWORD: ${{ secrets.PROD_KEYSTORE_STORE_PASSWORD }}
       run: |
         mkdir -p app/keystores
-        echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
-        cat <<EOF > app/keystores/prod-keystore.properties
-        keyAlias=$PROD_KEYSTORE_KEY_ALIAS
-        keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
-        storePassword=$PROD_KEYSTORE_STORE_PASSWORD
-        EOF
+        if [ -n "$PROD_KEYSTORE" ]; then
+          echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
+          cat <<EOF > app/keystores/prod-keystore.properties
+          keyAlias=$PROD_KEYSTORE_KEY_ALIAS
+          keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
+          storePassword=$PROD_KEYSTORE_STORE_PASSWORD
+          EOF
+        else
+          echo "PROD_KEYSTORE secret not set, skipping production keystore configuration."
+        fi
 
     - name: Inject credentials
       env:
@@ -197,6 +205,7 @@ jobs:
         } >>"$GITHUB_OUTPUT"
 
     - name: Post to Discord
+      if: secrets.DISCORD_WEBHOOK_URL != ''
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         # Read via env to avoid shell-quoting traps with multiline changelogs.

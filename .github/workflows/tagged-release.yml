@@ -34,11 +34,15 @@ jobs:
           KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
         run: |
           mkdir -p app/keystores
-          echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
-          echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
-          echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
-          echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
-          echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
+            echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
+            echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
+            echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
+            echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
+          else
+            echo "KEYSTORE secret not set, skipping keystore configuration."
+          fi
 
       - name: Configure Production Keystore
         env:
@@ -48,12 +52,16 @@ jobs:
           PROD_KEYSTORE_STORE_PASSWORD: ${{ secrets.PROD_KEYSTORE_STORE_PASSWORD }}
         run: |
           mkdir -p app/keystores
-          echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
-          cat <<EOF > app/keystores/prod-keystore.properties
-          keyAlias=$PROD_KEYSTORE_KEY_ALIAS
-          keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
-          storePassword=$PROD_KEYSTORE_STORE_PASSWORD
-          EOF
+          if [ -n "$PROD_KEYSTORE" ]; then
+            echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
+            cat <<EOF > app/keystores/prod-keystore.properties
+            keyAlias=$PROD_KEYSTORE_KEY_ALIAS
+            keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
+            storePassword=$PROD_KEYSTORE_STORE_PASSWORD
+            EOF
+          else
+            echo "PROD_KEYSTORE secret not set, skipping production keystore configuration."
+          fi
 
       - name: Inject credentials
         env:
@@ -122,21 +130,36 @@ jobs:
           if [ ! -d "$BUILD_TOOLS_DIR" ]; then
             BUILD_TOOLS_DIR="${ANDROID_SDK_ROOT}/build-tools/34.0.0"
           fi
-          for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
-            "${BUILD_TOOLS_DIR}/apksigner" sign \
-              --lineage app/keystores/prod-debug.lineage \
-              --ks app/keystores/keystore \
-              --ks-key-alias "$DEBUG_ALIAS" \
-              --ks-pass pass:$DEBUG_STORE_PASS \
-              --key-pass pass:$DEBUG_KEY_PASS \
-              --next-signer --ks app/keystores/prod.keystore \
-              --ks-key-alias "$PROD_ALIAS" \
-              --ks-pass pass:$PROD_STORE_PASS \
-              --key-pass pass:$PROD_KEY_PASS \
-              --out "${apk%.apk}-signed.apk" \
-              "$apk"
-            mv "${apk%.apk}-signed.apk" "$apk"
-          done
+          if [ -f app/keystores/keystore ] && [ -s app/keystores/keystore ] && [ -f app/keystores/prod.keystore ] && [ -s app/keystores/prod.keystore ]; then
+            echo "Signing with production keys..."
+            for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+              "${BUILD_TOOLS_DIR}/apksigner" sign \
+                --lineage app/keystores/prod-debug.lineage \
+                --ks app/keystores/keystore \
+                --ks-key-alias "$DEBUG_ALIAS" \
+                --ks-pass pass:$DEBUG_STORE_PASS \
+                --key-pass pass:$DEBUG_KEY_PASS \
+                --next-signer --ks app/keystores/prod.keystore \
+                --ks-key-alias "$PROD_ALIAS" \
+                --ks-pass pass:$PROD_STORE_PASS \
+                --key-pass pass:$PROD_KEY_PASS \
+                --out "${apk%.apk}-signed.apk" \
+                "$apk"
+              mv "${apk%.apk}-signed.apk" "$apk"
+            done
+          else
+            echo "Keystore secrets not found. Generating a debug keystore and signing with it..."
+            keytool -genkey -v -keystore app/keystores/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+              "${BUILD_TOOLS_DIR}/apksigner" sign \
+                --ks app/keystores/debug.keystore \
+                --ks-pass pass:android \
+                --key-pass pass:android \
+                --out "${apk%.apk}-signed.apk" \
+                "$apk"
+              mv "${apk%.apk}-signed.apk" "$apk"
+            done
+          fi
 
       - name: Upload APKs for next job
         uses: actions/upload-artifact@v4
