@@ -17,6 +17,13 @@ object PlayIntegrity {
     private var tokenProvider: StandardIntegrityTokenProvider? = null
 
     fun warmUp(application: Application) {
+        if (BuildConfig.DEBUG) {
+            tokenProvider = null
+            PrefManager.playIntegrityAvailable = false
+            Timber.tag("PlayIntegrity").d("Skipping Play Integrity warm-up in debug builds")
+            return
+        }
+
         val cloudProjectNumber = BuildConfig.CLOUD_PROJECT_NUMBER.toLongOrNull()
         if (cloudProjectNumber == null || cloudProjectNumber == 0L) {
             Timber.tag("PlayIntegrity").e("Invalid CLOUD_PROJECT_NUMBER: '${BuildConfig.CLOUD_PROJECT_NUMBER}'")
