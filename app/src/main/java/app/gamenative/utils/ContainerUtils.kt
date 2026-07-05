@@ -1264,37 +1264,7 @@ object ContainerUtils {
             }
 
             Timber.d("Scanning for executables in A: drive: $aDrivePath")
-
-            // Recursively scan for .exe files using listFiles with depth limit.
-            // Symlinked directories are skipped to avoid cycles (e.g. GOG ISI rootdir -> game root).
-            fun scanRecursive(dir: File, baseDir: File, depth: Int = 0, maxDepth: Int = 10) {
-                if (depth > maxDepth) return
-
-                dir.listFiles()?.forEach { file ->
-                    if (file.isDirectory) {
-                        if (FileUtils.isSymlink(file)) return@forEach
-                        scanRecursive(file, baseDir, depth + 1, maxDepth)
-                    } else if (file.isFile && file.name.lowercase().endsWith(".exe")) {
-                        // Convert to relative Windows path format
-                        val relativePath = baseDir.toURI().relativize(file.toURI()).path
-                        executables.add(relativePath)
-                    }
-                }
-            }
-
-            scanRecursive(aDir, aDir)
-
-            // Sort alphabetically and prioritize common game executables
-            executables.sortWith { a, b ->
-                val aScore = getExecutablePriority(a)
-                val bScore = getExecutablePriority(b)
-
-                if (aScore != bScore) {
-                    bScore.compareTo(aScore) // Higher priority first
-                } else {
-                    a.compareTo(b, ignoreCase = true) // Alphabetical
-                }
-            }
+            executables.addAll(CustomGameScanner.findAllValidExeFiles(aDir))
 
             Timber.d("Found ${executables.size} executables in A: drive")
         } catch (e: Exception) {

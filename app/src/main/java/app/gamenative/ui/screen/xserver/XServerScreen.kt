@@ -3119,18 +3119,25 @@ private fun setupXEnvironment(
     val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
     val lc_all = container!!.lC_ALL
     val imageFs = ImageFs.find(context)
+    val containerHomeDir = container.rootDir ?: File(imageFs.home_path)
+    val containerWinePrefix = File(containerHomeDir, ".wine")
+    val containerCacheDir = File(containerHomeDir, ".cache")
     Timber.i("ImageFs paths:")
     Timber.i("- rootDir: ${imageFs.getRootDir().absolutePath}")
     Timber.i("- winePath: ${imageFs.winePath}")
     Timber.i("- home_path: ${imageFs.home_path}")
     Timber.i("- wineprefix: ${imageFs.wineprefix}")
+    Timber.i("- containerHome: ${containerHomeDir.absolutePath}")
+    Timber.i("- containerWinePrefix: ${containerWinePrefix.absolutePath}")
 
     val contentsManager = ContentsManager(context)
     contentsManager.syncContents()
     envVars.put("LC_ALL", lc_all)
     envVars.put("MESA_DEBUG", "silent")
     envVars.put("MESA_NO_ERROR", "1")
-    envVars.put("WINEPREFIX", imageFs.wineprefix)
+    envVars.put("HOME", containerHomeDir.absolutePath)
+    envVars.put("WINEPREFIX", containerWinePrefix.absolutePath)
+    envVars.put("DXVK_STATE_CACHE_PATH", containerCacheDir.absolutePath)
     if (container.isSdlControllerAPI){
         if (container.inputType == PreferredInputApi.XINPUT.ordinal || container.inputType == PreferredInputApi.AUTO.ordinal){
             envVars.put("SDL_XINPUT_ENABLED", "1")
@@ -3158,6 +3165,10 @@ private fun setupXEnvironment(
     val enableWineDebug = PrefManager.enableWineDebug
     val enableBox86Logs = WinlatorPrefManager.getBoolean("enable_box86_64_logs", false)
     val wineDebugChannels = PrefManager.wineDebugChannels
+    val containerEnvVarsForDebug = EnvVars(container.envVars)
+    val forceWineDebugForContainer = containerEnvVarsForDebug.has("WINEDEBUG") &&
+        containerEnvVarsForDebug.get("WINEDEBUG").isNotBlank() &&
+        containerEnvVarsForDebug.get("WINEDEBUG") != "-all"
     // explicitly enable or disable Wine debug channels
     envVars.put(
         "WINEDEBUG",
@@ -3168,7 +3179,7 @@ private fun setupXEnvironment(
     )
     // capture debug output to file if either Wine or Box86/64 logging is enabled
     var logFile: File? = null
-    val captureLogs = enableWineDebug || enableBox86Logs
+    val captureLogs = enableWineDebug || enableBox86Logs || forceWineDebugForContainer
     if (captureLogs) {
         val wineLogDir = File(context.getExternalFilesDir(null), "wine_logs")
         wineLogDir.mkdirs()

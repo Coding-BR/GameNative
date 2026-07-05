@@ -376,34 +376,23 @@ object CustomGameScanner {
     }
 
     fun findUniqueExeRelativeToFolder(folder: File): String? {
-        if (!folder.exists() || !folder.isDirectory) return null
+        val candidates = findAllValidExeFiles(folder)
+        if (candidates.isEmpty()) return null
+        if (candidates.size == 1) return candidates.first()
 
-        fun File.isValidExe(): Boolean = this.isFile && this.name.endsWith(".exe", ignoreCase = true) &&
-            !this.name.startsWith("unins", ignoreCase = true)
-
-        val candidates = mutableListOf<String>()
-
-        folder.listFiles { f ->
-            f.isFile && f.name.endsWith(".exe", ignoreCase = true) &&
-                !f.name.startsWith("unins", ignoreCase = true)
-        }?.forEach { f ->
-            candidates.add(f.name)
+        val best = candidates.maxWithOrNull(compareBy<String> { executablePriority(folder, it) }.thenBy { -it.length })
+            ?: return null
+        val bestScore = executablePriority(folder, best)
+        val tied = candidates.count { executablePriority(folder, it) == bestScore }
+        if (tied == 1 && bestScore >= 80) {
+            Timber.tag("CustomGameScanner").d("Selected best executable for ${folder.name}: $best from ${candidates.size} candidates")
+            return best
         }
 
-        val subDirs = folder.listFiles { f -> f.isDirectory } ?: emptyArray()
-        for (sd in subDirs) {
-            sd.listFiles { f ->
-                f.isFile && f.name.endsWith(".exe", ignoreCase = true) &&
-                    !f.name.startsWith("unins", ignoreCase = true)
-            }?.forEach { f ->
-                val rel = sd.name + "/" + f.name
-                candidates.add(rel)
-            }
-        }
-
-        // Keep only unique items
-        val unique = candidates.distinct()
-        return if (unique.size == 1) unique.first() else null
+        Timber.tag("CustomGameScanner").d(
+            "Multiple executable candidates for ${folder.name}; waiting for user selection: ${candidates.joinToString()}",
+        )
+        return null
     }
 
     /**
@@ -418,30 +407,110 @@ object CustomGameScanner {
     fun findAllValidExeFiles(folder: File): List<String> {
         if (!folder.exists() || !folder.isDirectory) return emptyList()
 
-        fun File.isValidExe(): Boolean = this.isFile && this.name.endsWith(".exe", ignoreCase = true) &&
-            !this.name.startsWith("unins", ignoreCase = true)
-
         val candidates = mutableListOf<String>()
 
-        folder.listFiles { f ->
-            f.isFile && f.name.endsWith(".exe", ignoreCase = true) &&
-                !f.name.startsWith("unins", ignoreCase = true)
-        }?.forEach { f ->
-            candidates.add(f.name)
-        }
+        fun scanRecursive(dir: File, depth: Int) {
+            if (depth > 12) return
+            val files = try {
+                dir.listFiles()
+            } catch (e: SecurityException) {
+                Timber.tag("CustomGameScanner").w(e, "No permission to scan custom game folder: ${dir.absolutePath}")
+                null
+            } ?: return
 
-        val subDirs = folder.listFiles { f -> f.isDirectory } ?: emptyArray()
-        for (sd in subDirs) {
-            sd.listFiles { f ->
-                f.isFile && f.name.endsWith(".exe", ignoreCase = true) &&
-                    !f.name.startsWith("unins", ignoreCase = true)
-            }?.forEach { f ->
-                val rel = sd.name + "/" + f.name
-                candidates.add(rel)
+            files.forEach { file ->
+                when {
+                    file.isDirectory -> {
+                        if (!shouldSkipExeDirectory(file.name)) {
+                            scanRecursive(file, depth + 1)
+                        }
+                    }
+                    file.isFile && file.name.endsWith(".exe", ignoreCase = true) && !isUtilityExecutable(file.name) -> {
+                        val relativePath = folder.toURI().relativize(file.toURI()).path
+                        candidates.add(relativePath)
+                    }
+                }
             }
         }
 
-        return candidates.distinct()
+        scanRecursive(folder, 0)
+
+        return candidates.distinct().sortedWith(
+            compareByDescending<String> { executablePriority(folder, it) }
+                .thenBy { it.count { c -> c == '/' || c == '\\' } }
+                .thenBy { it.lowercase() },
+        )
+    }
+
+    private fun shouldSkipExeDirectory(name: String): Boolean {
+        val normalized = name.lowercase().replace("-", "").replace("_", "").replace(" ", "")
+        return normalized in setOf(
+            "redist",
+            "redistributable",
+            "redistributables",
+            "directx",
+            "support",
+            "installer",
+            "installers",
+            "bonusosts",
+            "__macosx",
+        )
+    }
+
+    private fun isUtilityExecutable(fileName: String): Boolean {
+        val baseName = fileName.substringBeforeLast('.', fileName).lowercase()
+        val strongPrefixes = listOf(
+            "unins",
+            "uninstall",
+            "setup",
+            "install",
+            "redist",
+            "vcredist",
+            "vc_redist",
+            "dxsetup",
+            "directx",
+            "crashhandler",
+            "crashreporter",
+            "crashreportclient",
+            "quicksfv",
+        )
+        if (strongPrefixes.any { baseName.startsWith(it) }) return true
+
+        val denylistTokens = setOf(
+            "unins",
+            "uninstall",
+            "setup",
+            "installer",
+            "redist",
+            "vcredist",
+            "directx",
+            "dxsetup",
+            "crashhandler",
+            "crashreporter",
+            "crashreportclient",
+            "quicksfv",
+        )
+        val tokens = baseName.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
+        return tokens.any { it in denylistTokens }
+    }
+
+    private fun executablePriority(folder: File, relativePath: String): Int {
+        val normalizedPath = relativePath.replace('\\', '/')
+        val fileName = normalizedPath.substringAfterLast('/').lowercase()
+        val baseName = fileName.substringBeforeLast('.')
+        val folderName = folder.name.lowercase().replace(Regex("[^a-z0-9]+"), "")
+        val compactBaseName = baseName.replace(Regex("[^a-z0-9]+"), "")
+
+        return when {
+            compactBaseName == folderName -> 140
+            normalizedPath.contains("/binaries/win64/", ignoreCase = true) &&
+                fileName.contains("shipping") -> 125
+            fileName.contains("win64") && fileName.contains("shipping") -> 120
+            fileName.contains("game") -> 100
+            fileName.contains("launcher") -> 85
+            fileName.contains("start") -> 80
+            else -> 70
+        }
     }
 
     /**

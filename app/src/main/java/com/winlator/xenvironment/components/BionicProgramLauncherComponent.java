@@ -213,6 +213,13 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         Context context = environment.getContext();
         ImageFs imageFs = ImageFs.find(context);
         File rootDir = imageFs.getRootDir();
+        File containerHomeDir = getContainerHomeDir(imageFs);
+        File containerWinePrefix = new File(containerHomeDir, ".wine");
+        File containerCacheDir = new File(containerHomeDir, ".cache");
+        containerCacheDir.mkdirs();
+        if (wineInfo != null && wineInfo.isArm64EC()) {
+            syncArm64EcBuiltins(imageFs, containerWinePrefix);
+        }
 
         PrefManager.init(context);
         boolean enableBox86_64Logs = PrefManager.getBoolean("enable_box86_64_logs", true);
@@ -250,8 +257,10 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             envVars.put("WRAPPER_DISABLE_PLACED", "1");
 
         // Setting up essential environment variables for Wine
-        envVars.put("HOME", imageFs.home_path);
+        envVars.put("HOME", containerHomeDir.getAbsolutePath());
         envVars.put("USER", ImageFs.USER);
+        envVars.put("WINEPREFIX", containerWinePrefix.getAbsolutePath());
+        envVars.put("DXVK_STATE_CACHE_PATH", containerCacheDir.getAbsolutePath());
         envVars.put("TMPDIR", rootDir.getPath() + "/usr/tmp");
         envVars.put("DISPLAY", ":0");
 
@@ -373,7 +382,13 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             FileUtils.chmod(box64File, 0755);
         }
 
-        return ProcessHelper.exec(command, envVars.toStringArray(), workingDir != null ? workingDir : rootDir, (status) -> {
+        File effectiveWorkingDir = workingDir != null ? workingDir : rootDir;
+        Log.i("BionicProgramLauncherComponent", "Launching guest command: " + command);
+        Log.i("BionicProgramLauncherComponent", "Guest executable: " + guestExecutable);
+        Log.i("BionicProgramLauncherComponent", "Guest working dir: " + effectiveWorkingDir.getAbsolutePath());
+
+        return ProcessHelper.exec(command, envVars.toStringArray(), effectiveWorkingDir, (status) -> {
+            Log.i("BionicProgramLauncherComponent", "Guest process exited with status " + status + " for " + guestExecutable);
             synchronized (lock) {
                 pid = -1;
             }
@@ -383,6 +398,36 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                     terminationCallback.call(status);
             }
         });
+    }
+
+    private File getContainerHomeDir(ImageFs imageFs) {
+        if (container != null && container.getRootDir() != null) return container.getRootDir();
+        return new File(imageFs.home_path);
+    }
+
+    private void syncArm64EcBuiltins(ImageFs imageFs, File winePrefix) {
+        File wineLibDir = new File(imageFs.getWinePath(), "lib/wine");
+        copyMissingWineBuiltins(new File(wineLibDir, "aarch64-windows"), new File(winePrefix, "drive_c/windows/system32"));
+        copyMissingWineBuiltins(new File(wineLibDir, "i386-windows"), new File(winePrefix, "drive_c/windows/syswow64"));
+    }
+
+    private void copyMissingWineBuiltins(File sourceDir, File destinationDir) {
+        File[] files = sourceDir.listFiles();
+        if (files == null) return;
+        destinationDir.mkdirs();
+        int copied = 0;
+        for (File sourceFile : files) {
+            if (!sourceFile.isFile()) continue;
+            File destinationFile = new File(destinationDir, sourceFile.getName());
+            if (destinationFile.exists()) continue;
+            if (FileUtils.copy(sourceFile, destinationFile)) {
+                FileUtils.chmod(destinationFile, 0771);
+                copied++;
+            }
+        }
+        if (copied > 0) {
+            Log.i("BionicProgramLauncherComponent", "Copied " + copied + " missing Wine builtins to " + destinationDir.getAbsolutePath());
+        }
     }
 
     @NonNull
@@ -650,11 +695,14 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         Context context = environment.getContext();
         ImageFs imageFs = ImageFs.find(context);
         File rootDir = imageFs.getRootDir();
+        File containerHomeDir = getContainerHomeDir(imageFs);
+        File containerWinePrefix = new File(containerHomeDir, ".wine");
         EnvVars envVars = new EnvVars();
         addBox64EnvVars(envVars, false);
 
-        envVars.put("HOME", imageFs.home_path);
+        envVars.put("HOME", containerHomeDir.getAbsolutePath());
         envVars.put("USER", ImageFs.USER);
+        envVars.put("WINEPREFIX", containerWinePrefix.getAbsolutePath());
         envVars.put("TMPDIR", imageFs.getRootDir().getPath() + "/tmp");
         envVars.put("DISPLAY", ":0");
 

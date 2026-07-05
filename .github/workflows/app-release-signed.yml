@@ -205,7 +205,6 @@ jobs:
         } >>"$GITHUB_OUTPUT"
 
     - name: Post to Discord
-      if: secrets.DISCORD_WEBHOOK_URL != ''
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         # Read via env to avoid shell-quoting traps with multiline changelogs.
@@ -214,6 +213,10 @@ jobs:
         MODERN_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-modern.zip
         LEGACY_XR_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-legacy-xr.zip
       run: |
+        if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+          echo "Discord webhook URL is not set. Skipping notification."
+          exit 0
+        fi
         # jq -n handles JSON escaping (newlines, quotes, etc.) for us.
         payload=$(jq -n \
           --arg legacy "$LEGACY_URL" \
