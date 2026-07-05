@@ -83,7 +83,7 @@ object ContainerMigrator {
             }
 
             val imageFs = ImageFs.find(context)
-            val homeDir = File(imageFs.rootDir, "home")
+            val homeDir = runCatching { File(imageFs.rootDir, "home").canonicalFile }.getOrElse { File(imageFs.rootDir, "home") }
 
             // Find all legacy numeric container directories
             val legacyContainers = homeDir.listFiles()?.filter { file ->

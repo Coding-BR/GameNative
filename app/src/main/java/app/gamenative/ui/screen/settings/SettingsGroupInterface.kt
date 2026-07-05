@@ -420,6 +420,9 @@ fun SettingsGroupInterface(
     }
 
     // Custom Game Settings
+    var showSteamGridDBDialog by rememberSaveable { mutableStateOf(false) }
+    var steamGridDBApiKey by rememberSaveable { mutableStateOf(PrefManager.steamGridDBApiKey) }
+
     SettingsGroup(
         modifier = Modifier.background(Color.Transparent),
         title = { Text(text = stringResource(R.string.settings_interface_custom_games)) },
@@ -433,6 +436,67 @@ fun SettingsGroupInterface(
                 importCustomGameAsSteamGame = it
                 PrefManager.importCustomGameAsSteamGame = it
             },
+        )
+
+        var fetchSteamGridDBImages by rememberSaveable { mutableStateOf(PrefManager.fetchSteamGridDBImages) }
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.settings_interface_fetch_steamgriddb_images)) },
+            state = fetchSteamGridDBImages,
+            onCheckedChange = {
+                fetchSteamGridDBImages = it
+                PrefManager.fetchSteamGridDBImages = it
+            },
+        )
+
+        SettingsMenuLink(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.settings_interface_steamgriddb_api_key)) },
+            subtitle = {
+                Text(
+                    text = if (steamGridDBApiKey.isEmpty()) {
+                        stringResource(R.string.settings_interface_steamgriddb_api_key_not_set)
+                    } else {
+                        "••••••••••••••••"
+                    }
+                )
+            },
+            onClick = { showSteamGridDBDialog = true }
+        )
+    }
+
+    if (showSteamGridDBDialog) {
+        var tempKey by remember { mutableStateOf(steamGridDBApiKey) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSteamGridDBDialog = false },
+            title = { Text(text = stringResource(R.string.settings_interface_steamgriddb_api_key)) },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = tempKey,
+                    onValueChange = { tempKey = it },
+                    label = { Text(text = "API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        steamGridDBApiKey = tempKey
+                        PrefManager.steamGridDBApiKey = tempKey
+                        showSteamGridDBDialog = false
+                    }
+                ) {
+                    Text(text = stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showSteamGridDBDialog = false }
+                ) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+            }
         )
     }
 

@@ -151,7 +151,7 @@ object ContainerStorageManager {
     )
 
     suspend fun loadEntries(context: Context): List<Entry> = withContext(Dispatchers.IO) {
-        val homeDir = File(ImageFs.find(context).rootDir, "home")
+        val homeDir = runCatching { File(ImageFs.find(context).rootDir, "home").canonicalFile }.getOrElse { File(ImageFs.find(context).rootDir, "home") }
         val prefix = "${ImageFs.USER}-"
         val dirs = homeDir.listFiles()
             ?.filter { it.isDirectory && it.name.startsWith(prefix) }
@@ -358,7 +358,7 @@ object ContainerStorageManager {
     }
 
     suspend fun removeContainer(context: Context, containerId: String): Boolean = withContext(Dispatchers.IO) {
-        val homeDir = File(ImageFs.find(context).rootDir, "home")
+        val homeDir = runCatching { File(ImageFs.find(context).rootDir, "home").canonicalFile }.getOrElse { File(ImageFs.find(context).rootDir, "home") }
         val containerDir = File(homeDir, "${ImageFs.USER}-$containerId")
         if (!containerDir.exists()) {
             Timber.tag("ContainerStorageManager").w("Remove requested for missing container: %s", containerId)

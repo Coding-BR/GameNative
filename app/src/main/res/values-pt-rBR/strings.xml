@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name">GameNative</string>
     <string name="login_user">Login do Usuário</string>
     <string name="login_2fa">Dois Fatores</string>
@@ -712,6 +712,12 @@
     <string name="suspend_behavior_never">Nunca suspender</string>
     <string name="suspend_behavior_manual">Suspender até o botão Retomar ser pressionado (Padrão)</string>
     <string name="processor_affinity_32bit">Afinidade de processador (apps 32-bit)</string>
+    <string name="cpu_affinity_preset">Predefinição de Afinidade de CPU</string>
+    <string name="cpu_preset_default">Padrão (Todos os núcleos)</string>
+    <string name="cpu_preset_sd8gen2">Snapdragon 8 Gen 2 (Núcleos Grandes: 3-6)</string>
+    <string name="cpu_preset_sd8gen3">Snapdragon 8 Gen 3 (Núcleos Grandes: 2-6)</string>
+    <string name="cpu_preset_sd8elite">Snapdragon 8 Elite (Núcleos Médios: 0-5)</string>
+    <string name="cpu_preset_custom">Personalizado (Seleção Manual)</string>
     <string name="executable_path">Caminho Executável</string>
     <string name="executable_path_placeholder">ex.: caminho\\\\para\\\\exe</string>
 
@@ -813,6 +819,9 @@
     <string name="settings_interface_icon_style">Estilo de ícone</string>
     <string name="settings_interface_custom_games">Jogos personalizados</string>
     <string name="settings_interface_custom_game_import_as_steam">Importar jogos personalizados como jogos Steam</string>
+    <string name="settings_interface_fetch_steamgriddb_images">Buscar capas automaticamente</string>
+    <string name="settings_interface_steamgriddb_api_key">Chave API do SteamGridDB</string>
+    <string name="settings_interface_steamgriddb_api_key_not_set">Não configurado (toque para definir)</string>
     <string name="settings_interface_wifi_only_title">Baixar apenas por Wi-Fi/LAN</string>
     <string name="settings_interface_wifi_only_subtitle">Impedir downloads usando dados móveis</string>
     <string name="settings_interface_external_storage_title">Gravar no armazenamento externo</string>

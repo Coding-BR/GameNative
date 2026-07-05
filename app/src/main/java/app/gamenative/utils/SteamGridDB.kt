@@ -40,6 +40,9 @@ object SteamGridDB {
      * Returns null if the key is not configured.
      */
     private fun getApiKey(): String? {
+        val userKey = PrefManager.steamGridDBApiKey.trim()
+        if (userKey.isNotEmpty()) return userKey
+        
         val apiKey = app.gamenative.BuildConfig.STEAMGRIDDB_API_KEY
         return if (apiKey.isNotEmpty()) {
             apiKey

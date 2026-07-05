@@ -40,23 +40,41 @@ public class ContainerManager {
         loadContainers();
     }
 
+    public File getHomeDir() {
+        try {
+            return homeDir.getCanonicalFile();
+        } catch (java.io.IOException e) {
+            return homeDir;
+        }
+    }
+
     public ArrayList<Container> getContainers() {
+        loadContainers();
         return containers;
     }
 
     private void loadContainers() {
         containers.clear();
 
-        File[] files = homeDir.listFiles();
-        if (files != null) {
+        File home = getHomeDir();
+        Log.d("ContainerManager", "loadContainers: home path = " + home.getPath() + ", canonical = " + home.getAbsolutePath() + ", exists = " + home.exists() + ", isDir = " + home.isDirectory());
+
+        File[] files = home.listFiles();
+        if (files == null) {
+            Log.d("ContainerManager", "loadContainers: listFiles() returned null!");
+        } else {
+            Log.d("ContainerManager", "loadContainers: found " + files.length + " files/dirs");
             for (File file : files) {
-                if (file.isDirectory()) {
+                Log.d("ContainerManager", "loadContainers: item = " + file.getName() + ", isDir = " + file.isDirectory() + ", isSymlink = " + FileUtils.isSymlink(file));
+                if (file.isDirectory() || FileUtils.isSymlink(file)) {
                     if (file.getName().startsWith(ImageFs.USER+"-")) {
                         String containerId = file.getName().replace(ImageFs.USER+"-", "");
+                        Log.d("ContainerManager", "loadContainers: found container folder with id = " + containerId);
                         Container container = new Container(containerId);
-                        container.setRootDir(new File(homeDir, ImageFs.USER+"-"+container.id));
+                        container.setRootDir(new File(getHomeDir(), ImageFs.USER+"-"+container.id));
                         try {
                             File configFile = container.getConfigFile();
+                            Log.d("ContainerManager", "loadContainers: config file = " + configFile.getPath() + ", exists = " + configFile.exists());
                             String configContent = FileUtils.readString(configFile);
 
                             if (configContent == null || configContent.trim().isEmpty()) {
@@ -67,6 +85,7 @@ public class ContainerManager {
                             JSONObject data = new JSONObject(configContent);
                             container.loadData(data);
                             containers.add(container);
+                            Log.d("ContainerManager", "loadContainers: successfully loaded and added container " + containerId);
                         } catch (Exception e) {
                             // Catch ALL exceptions (NullPointerException, JSONException, etc.)
                             Log.w("ContainerManager", "Could not load container " + containerId + ": " + e.getMessage());
@@ -79,8 +98,8 @@ public class ContainerManager {
     }
 
     public void activateContainer(Container container) {
-        container.setRootDir(new File(homeDir, ImageFs.USER+"-"+container.id));
-        File file = new File(homeDir, ImageFs.USER);
+        container.setRootDir(new File(getHomeDir(), ImageFs.USER+"-"+container.id));
+        File file = new File(getHomeDir(), ImageFs.USER);
         file.delete();
         FileUtils.symlink("./"+ImageFs.USER+"-"+container.id, file.getPath());
     }
@@ -162,7 +181,7 @@ public class ContainerManager {
         try {
             data.put("id", containerId);
 
-            File containerDir = new File(homeDir, ImageFs.USER+"-"+containerId);
+            File containerDir = new File(getHomeDir(), ImageFs.USER+"-"+containerId);
             if (!containerDir.mkdirs()) return null;
 
             Container container = new Container(containerId);
@@ -194,7 +213,7 @@ public class ContainerManager {
         String baseId = srcContainer.id;
         String newId = generateUniqueContainerId(baseId);
 
-        File dstDir = new File(homeDir, ImageFs.USER+"-"+newId);
+        File dstDir = new File(getHomeDir(), ImageFs.USER+"-"+newId);
         if (!dstDir.mkdirs()) return;
 
         if (!FileUtils.copy(srcContainer.getRootDir(), dstDir, (file) -> FileUtils.chmod(file, 0771))) {
@@ -252,6 +271,7 @@ public class ContainerManager {
     }
 
     public ArrayList<Shortcut> loadShortcuts() {
+        loadContainers();
         ArrayList<Shortcut> shortcuts = new ArrayList<>();
         for (Container container : containers) {
             File desktopDir = container.getDesktopDir();
@@ -268,11 +288,13 @@ public class ContainerManager {
     }
 
     public boolean hasContainer(String id) {
+        loadContainers();
         for (Container container : containers) if (container.id.equals(id)) return true;
         return false;
     }
 
     public Container getContainerById(String id) {
+        loadContainers();
         for (Container container : containers) if (container.id.equals(id)) return container;
         return null;
     }

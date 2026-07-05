@@ -441,6 +441,13 @@ class LibraryViewModel @Inject constructor(
             if (!manualFolders.contains(normalizedPath)) {
                 manualFolders.add(normalizedPath)
                 PrefManager.customGameManualFolders = manualFolders
+                
+                // Wait for the asynchronous Datastore write to complete and become visible
+                var attempts = 0
+                while (!PrefManager.customGameManualFolders.contains(normalizedPath) && attempts < 50) {
+                    kotlinx.coroutines.delay(10)
+                    attempts++
+                }
             }
 
             CustomGameScanner.invalidateCache()
@@ -491,6 +498,15 @@ class LibraryViewModel @Inject constructor(
 
             val currentState = _state.value
             val currentFilter = AppFilter.getAppType(currentState.appInfoSortType)
+
+            // Compute whether custom games should be included based on current tab.
+            // Computed early because customGameItems scan below needs it.
+            val currentTab = currentState.currentTab
+            val includeOpen = if (currentTab == app.gamenative.ui.enums.LibraryTab.ALL) {
+                currentState.showCustomGamesInLibrary
+            } else {
+                currentTab.showCustom
+            }
 
             // Fetch download directory apps once on IO thread and cache as a HashSet for O(1) lookups
             val downloadDirectoryApps = DownloadService.getDownloadDirectoryApps() + SteamService.getImportedAppDirs()
@@ -607,9 +623,10 @@ class LibraryViewModel @Inject constructor(
                 )
             }
 
-            // Scan Custom Games roots and create UI items (filtered by search query inside scanner)
-            // Only include custom games if GAME filter is selected
-            val customGameItems = if (currentState.appInfoSortType.contains(AppFilter.GAME)) {
+            // Scan Custom Games roots and create UI items (filtered by search query inside scanner).
+            // Always scan when includeOpen is set — the tab/source filter decides visibility below,
+            // and AppFilter.GAME should not gate non-Steam custom game scanning.
+            val customGameItems = if (includeOpen) {
                 CustomGameScanner.scanAsLibraryItems(
                     query = currentState.searchQuery,
                 )
@@ -773,16 +790,11 @@ class LibraryViewModel @Inject constructor(
             // Compute effective source filters based on current tab
             // ALL tab uses user preferences, other tabs override with their presets
             // Use captured currentState (not _state.value) to avoid TOCTOU race
-            val currentTab = currentState.currentTab
+            // Note: currentTab and includeOpen are already computed above for early use.
             val includeSteam = if (currentTab == app.gamenative.ui.enums.LibraryTab.ALL) {
                 currentState.showSteamInLibrary
             } else {
                 currentTab.showSteam
-            }
-            val includeOpen = if (currentTab == app.gamenative.ui.enums.LibraryTab.ALL) {
-                currentState.showCustomGamesInLibrary
-            } else {
-                currentTab.showCustom
             }
 
             val includeGOG = (if (currentTab == app.gamenative.ui.enums.LibraryTab.ALL) {

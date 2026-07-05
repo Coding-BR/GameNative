@@ -1134,7 +1134,7 @@ object ContainerUtils {
             // Raw filesystem scan — catches directories whose config file was empty/corrupt and
             // were silently skipped by ContainerManager. These are potential orphans.
             // Directory layout: <filesDir>/imagefs/home/xuser-<containerId>
-            val homeDir = java.io.File(context.filesDir, "imagefs/home")
+            val homeDir = runCatching { java.io.File(context.filesDir, "imagefs/home").canonicalFile }.getOrElse { java.io.File(context.filesDir, "imagefs/home") }
             val prefix = "${com.winlator.xenvironment.ImageFs.USER}-"
             val rawIds = homeDir.listFiles()
                 ?.filter { it.isDirectory && it.name.startsWith(prefix) }

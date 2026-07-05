@@ -25,6 +25,55 @@ fun AdvancedTabContent(state: ContainerConfigState) {
                 state.config.value = config.copy(startupSelection = it.toByte())
             },
         )
+        
+        val totalCores = Runtime.getRuntime().availableProcessors()
+        val defaultList = (0 until totalCores).joinToString(",")
+        
+        val presetItems = listOf(
+            stringResource(R.string.cpu_preset_default),
+            stringResource(R.string.cpu_preset_sd8gen2),
+            stringResource(R.string.cpu_preset_sd8gen3),
+            stringResource(R.string.cpu_preset_sd8elite),
+            stringResource(R.string.cpu_preset_custom)
+        )
+        
+        val currentPresetIndex = when {
+            config.cpuList == defaultList -> 0
+            config.cpuList == "3,4,5,6" -> 1
+            config.cpuList == "2,3,4,5,6" -> 2
+            config.cpuList == "0,1,2,3,4,5" -> 3
+            else -> 4
+        }
+        
+        SettingsListDropdown(
+            colors = settingsTileColors(),
+            title = { Text(text = stringResource(R.string.cpu_affinity_preset)) },
+            value = currentPresetIndex,
+            items = presetItems,
+            onItemSelected = { index ->
+                val newConfig = when (index) {
+                    0 -> config.copy(
+                        cpuList = defaultList,
+                        cpuListWoW64 = (totalCores / 2 until totalCores).joinToString(",")
+                    )
+                    1 -> config.copy(
+                        cpuList = "3,4,5,6",
+                        cpuListWoW64 = "3,4,5,6"
+                    )
+                    2 -> config.copy(
+                        cpuList = "2,3,4,5,6",
+                        cpuListWoW64 = "3,4,5,6"
+                    )
+                    3 -> config.copy(
+                        cpuList = "0,1,2,3,4,5",
+                        cpuListWoW64 = "2,3,4,5"
+                    )
+                    else -> config
+                }
+                state.config.value = newConfig
+            }
+        )
+
         SettingsCPUList(
             colors = settingsTileColors(),
             title = { Text(text = stringResource(R.string.processor_affinity)) },
