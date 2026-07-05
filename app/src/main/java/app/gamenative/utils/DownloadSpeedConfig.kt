@@ -2,11 +2,19 @@ package app.gamenative.utils
 
 import app.gamenative.PrefManager
 
-class DownloadSpeedConfig {
+class DownloadSpeedConfig(
+    private val totalExpectedBytes: Long = 0L,
+    private val forceCoolMode: Boolean = false,
+) {
     private data class Ratios(val download: Double, val decompress: Double)
 
+    private val isCoolMode: Boolean
+        get() = forceCoolMode || totalExpectedBytes >= LARGE_DOWNLOAD_BYTES
+
     private val ratios: Ratios
-        get() = when (PrefManager.downloadSpeed) {
+        get() = if (isCoolMode) {
+            Ratios(download = 0.15, decompress = 0.1)
+        } else when (PrefManager.downloadSpeed) {
             8 -> {
                 Ratios(download = 0.6, decompress = 0.2)
             }
@@ -32,8 +40,20 @@ class DownloadSpeedConfig {
         get() = Runtime.getRuntime().availableProcessors()
 
     val maxDownloads: Int
-        get() = (cpuCores * ratios.download).toInt().coerceAtLeast(1)
+        get() = if (isCoolMode) {
+            1
+        } else {
+            (cpuCores * ratios.download).toInt().coerceAtLeast(1)
+        }
 
     val maxDecompress: Int
-        get() = (cpuCores * ratios.decompress).toInt().coerceAtLeast(1)
+        get() = if (isCoolMode) {
+            1
+        } else {
+            (cpuCores * ratios.decompress).toInt().coerceAtLeast(1)
+        }
+
+    companion object {
+        private const val LARGE_DOWNLOAD_BYTES = 50L * 1024L * 1024L * 1024L
+    }
 }

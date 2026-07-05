@@ -309,6 +309,8 @@ class SteamService : Service(), IChallengeUrlChanged {
         const val INVALID_APP_ID: Int = Int.MAX_VALUE
         const val INVALID_PKG_ID: Int = Int.MAX_VALUE
         private const val STEAM_CONTROLLER_CONFIG_FILENAME = "steam_controller_config.vdf"
+        private const val GTA_V_APP_ID = 271590
+        private const val LARGE_STEAM_DOWNLOAD_BYTES = 50L * 1024L * 1024L * 1024L
 
         /**
          * Default timeout to use when making requests
@@ -1838,8 +1840,20 @@ class SteamService : Service(), IChallengeUrlChanged {
                             return@launch
                         }
 
+                        val useCoolDownloadMode = appId == GTA_V_APP_ID || totalBytes >= LARGE_STEAM_DOWNLOAD_BYTES
+                        if (useCoolDownloadMode) {
+                            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                            Timber.i(
+                                "Using Steam cool download mode for appId=$appId, " +
+                                    "totalBytes=$totalBytes",
+                            )
+                        }
+
                         // Moved to DownloadSpeedConfig
-                        val speedConfig = DownloadSpeedConfig()
+                        val speedConfig = DownloadSpeedConfig(
+                            totalExpectedBytes = totalBytes,
+                            forceCoolMode = useCoolDownloadMode,
+                        )
                         val cpuCores = speedConfig.cpuCores
                         val maxDownloads = speedConfig.maxDownloads
                         val maxDecompress = speedConfig.maxDecompress

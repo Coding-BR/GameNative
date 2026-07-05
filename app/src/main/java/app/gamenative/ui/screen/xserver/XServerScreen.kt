@@ -3540,6 +3540,26 @@ private fun getWineStartCommand(
     val isEpicGame = gameSource == GameSource.EPIC
     val isSteamGame = gameSource == GameSource.STEAM
     val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
+    fun buildDirectSteamGameCommand(executablePath: String): String {
+        val appDirPath = SteamService.getAppDirPath(gameId)
+        val executableDir = appDirPath + "/" + executablePath.substringBeforeLast("/", "")
+        guestProgramLauncherComponent.workingDir = File(executableDir)
+        Timber.i("Working directory is $executableDir")
+
+        val drives = container.drives
+        val driveIndex = drives.indexOf(appDirPath)
+        val drive = if (driveIndex > 1) {
+            drives[driveIndex - 2]
+        } else {
+            Timber.e("Could not locate game drive")
+            'D'
+        }
+        if (appLaunchInfo != null) {
+            envVars.put("WINEPATH", "$drive:/${appLaunchInfo.workingDir}")
+        }
+        Timber.i("Final exe path is $executablePath")
+        return "\"$drive:/${executablePath}\""
+    }
 
     if (isSteamGame) {
         // Steam-specific setup
@@ -3911,27 +3931,19 @@ private fun getWineStartCommand(
                 container.saveData()
             }
             if (container.isUseLegacyDRM) {
-                val appDirPath = SteamService.getAppDirPath(gameId)
-                val executableDir = appDirPath + "/" + executablePath.substringBeforeLast("/", "")
-                guestProgramLauncherComponent.workingDir = File(executableDir);
-                Timber.i("Working directory is ${executableDir}")
-
-                Timber.i("Final exe path is " + executablePath)
-                val drives = container.drives
-                val driveIndex = drives.indexOf(appDirPath)
-                // greater than 1 since there is the drive character and the colon before the app dir path
-                val drive = if (driveIndex > 1) {
-                    drives[driveIndex - 2]
-                } else {
-                    Timber.e("Could not locate game drive")
-                    'D'
-                }
-                if (appLaunchInfo != null){
-                    envVars.put("WINEPATH", "$drive:/${appLaunchInfo.workingDir}")
-                }
-                "\"$drive:/${executablePath}\""
+                buildDirectSteamGameCommand(executablePath)
             } else {
-                "\"C:\\\\Program Files (x86)\\\\Steam\\\\steamclient_loader_x64.exe\""
+                val imageFs = ImageFs.find(context)
+                val steamClientRuntime = File(imageFs.getRootDir(), "usr/lib/libsteamclient.so")
+                if (steamClientRuntime.exists()) {
+                    "\"C:\\\\Program Files (x86)\\\\Steam\\\\steamclient_loader_x64.exe\""
+                } else {
+                    Timber.w(
+                        "Missing ${steamClientRuntime.absolutePath}; " +
+                            "falling back to direct Steam game launch to avoid black screen",
+                    )
+                    buildDirectSteamGameCommand(executablePath)
+                }
             }
         }
     }
