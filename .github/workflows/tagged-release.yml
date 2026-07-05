@@ -54,11 +54,9 @@ jobs:
           mkdir -p app/keystores
           if [ -n "$PROD_KEYSTORE" ]; then
             echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
-            cat <<EOF > app/keystores/prod-keystore.properties
-            keyAlias=$PROD_KEYSTORE_KEY_ALIAS
-            keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
-            storePassword=$PROD_KEYSTORE_STORE_PASSWORD
-            EOF
+            echo "keyAlias=$PROD_KEYSTORE_KEY_ALIAS" > app/keystores/prod-keystore.properties
+            echo "keyPassword=$PROD_KEYSTORE_KEY_PASSWORD" >> app/keystores/prod-keystore.properties
+            echo "storePassword=$PROD_KEYSTORE_STORE_PASSWORD" >> app/keystores/prod-keystore.properties
           else
             echo "PROD_KEYSTORE secret not set, skipping production keystore configuration."
           fi
