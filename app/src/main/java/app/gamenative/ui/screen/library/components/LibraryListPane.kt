@@ -256,7 +256,7 @@ internal fun LibraryListPane(
                                 key = { listIndex -> state.appInfoList[listIndex].appId },
                             ) { listIndex ->
                                 val item = state.appInfoList[listIndex]
-                                var isVisible by remember(item.index) { mutableStateOf(false) }
+                                var isVisible by remember(item.appId) { mutableStateOf(false) }
                                 val alpha by animateFloatAsState(
                                     targetValue = if (isVisible) 1f else 0f,
                                     animationSpec = spring(
@@ -266,7 +266,7 @@ internal fun LibraryListPane(
                                     label = "fadeIn",
                                 )
 
-                                LaunchedEffect(item.index) {
+                                LaunchedEffect(item.appId) {
                                     delay((item.index % 8) * 30L)
                                     isVisible = true
                                 }
