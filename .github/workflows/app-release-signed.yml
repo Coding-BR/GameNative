@@ -97,12 +97,22 @@ jobs:
 
     - name: Extract APKs from Bundles
       run: |
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-release.aab --output=app-release.apks --mode=universal
-        unzip -o app-release.apks universal.apk
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-modern-release.aab --output=app-modern-release.apks --mode=universal
-        unzip -p app-modern-release.apks universal.apk > universal-modern.apk
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-legacy-xr-release.aab --output=app-legacy-xr-release.apks --mode=universal
-        unzip -p app-legacy-xr-release.apks universal.apk > universal-legacy-xr.apk
+        extract_universal_apk() {
+          local bundle="$1"
+          local apks="$2"
+          local apk="$3"
+
+          java -Xmx2g -jar tools/bundletool-all-1.17.2.jar build-apks \
+            --bundle="$bundle" \
+            --output="$apks" \
+            --mode=universal
+          unzip -p "$apks" universal.apk > "$apk"
+          rm -f "$apks"
+        }
+
+        extract_universal_apk app-release.aab app-release.apks universal.apk
+        extract_universal_apk app-modern-release.aab app-modern-release.apks universal-modern.apk
+        extract_universal_apk app-legacy-xr-release.aab app-legacy-xr-release.apks universal-legacy-xr.apk
 
     - name: Copy lineage file
       run: |
