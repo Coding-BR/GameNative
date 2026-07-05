@@ -514,6 +514,15 @@ private fun LibraryScreenContent(
 
     // Restore focus after tab change - handles both empty and populated tabs
     LaunchedEffect(state.currentTab) {
+        // Reset scroll position to top to prevent out-of-bounds blank states on new tabs
+        try {
+            carouselFocusTargetListIndex = 0
+            carouselListState.scrollToItem(0)
+        } catch (_: Exception) {}
+        try {
+            listState.scrollToItem(0)
+        } catch (_: Exception) {}
+
         // Brief delay to let list populate after tab change
         kotlinx.coroutines.delay(150)
 

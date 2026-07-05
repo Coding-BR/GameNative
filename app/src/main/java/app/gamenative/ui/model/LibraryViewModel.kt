@@ -120,6 +120,7 @@ class LibraryViewModel @Inject constructor(
 
     // Track debounce job for search
     private var searchDebounceJob: Job? = null
+    private var filterJob: Job? = null
     private val SEARCH_DEBOUNCE_MS = 500L // 500ms debounce
 
     // Cache GPU name to avoid repeated calls
@@ -493,7 +494,8 @@ class LibraryViewModel @Inject constructor(
 
     private fun onFilterApps(paginationPage: Int = 0): Job {
         Timber.tag("LibraryViewModel").d("onFilterApps - appList.size: ${appList.size}, isFirstLoad: $isFirstLoad")
-        return viewModelScope.launch(Dispatchers.IO) {
+        filterJob?.cancel()
+        val job = viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
 
             val currentState = _state.value
@@ -928,6 +930,8 @@ class LibraryViewModel @Inject constructor(
                 )
             }
         }
+        filterJob = job
+        return job
     }
 
     /**
