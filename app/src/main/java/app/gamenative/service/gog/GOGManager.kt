@@ -16,6 +16,7 @@ import app.gamenative.utils.FileUtils
 import app.gamenative.utils.MarkerUtils
 import app.gamenative.utils.Net
 import com.winlator.container.Container
+import com.winlator.core.RuntimeLocaleHelper
 import com.winlator.core.envvars.EnvVars
 import com.winlator.core.FileUtils as WinlatorFileUtils
 import com.winlator.xenvironment.components.GuestProgramLauncherComponent
@@ -855,8 +856,9 @@ class GOGManager @Inject constructor(
         val gameDriveLetter = "A"
         val buildId = root.optString("buildId", "")
         val versionName = root.optString("versionName", "")
-        val langCode = root.optString("language", "en").let { if (it.length <= 2) "$it-US" else it }
-        val language = "English"
+        val container = runCatching { ContainerUtils.getContainer(context, appId) }.getOrNull()
+        val langCode = RuntimeLocaleHelper.epicLocaleForContainer(container)
+        val language = RuntimeLocaleHelper.installerLanguageForContainer(container)
         val productsArray = root.optJSONArray("products") ?: return emptyList()
 
         val parts = mutableListOf<String>()

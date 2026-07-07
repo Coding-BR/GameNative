@@ -430,6 +430,26 @@ object ContainerUtils {
                 "epicOfflineMode" -> value?.let { updatedData.copy(epicOfflineMode = it as? Boolean ?: updatedData.epicOfflineMode) } ?: updatedData
                 "unpackFiles" -> value?.let { updatedData.copy(unpackFiles = it as? Boolean ?: updatedData.unpackFiles) } ?: updatedData
                 "suspendPolicy" -> value?.let { updatedData.copy(suspendPolicy = it as? String ?: updatedData.suspendPolicy) } ?: updatedData
+                "rootPerformanceProfile" -> value?.let {
+                    val profile = Container.normalizeRootPerformanceProfile(it as? String)
+                    updatedData.copy(
+                        rootPerformanceProfile = profile,
+                        rootPerformanceMode = profile != Container.ROOT_PERFORMANCE_OFF &&
+                            profile != Container.ROOT_PERFORMANCE_GLOBAL,
+                    )
+                } ?: updatedData
+                "rootPerformanceMode" -> value?.let {
+                    val enabled = it as? Boolean ?: updatedData.rootPerformanceMode
+                    val profile = if (enabled) {
+                        Container.ROOT_PERFORMANCE_PERFORMANCE
+                    } else {
+                        Container.ROOT_PERFORMANCE_OFF
+                    }
+                    updatedData.copy(
+                        rootPerformanceMode = enabled,
+                        rootPerformanceProfile = profile,
+                    )
+                } ?: updatedData
                 "envVars" -> value?.let { updatedData.copy(envVars = it as? String ?: updatedData.envVars) } ?: updatedData
                 "cpuList" -> value?.let { updatedData.copy(cpuList = it as? String ?: updatedData.cpuList) } ?: updatedData
                 "cpuListWoW64" -> value?.let { updatedData.copy(cpuListWoW64 = it as? String ?: updatedData.cpuListWoW64) } ?: updatedData

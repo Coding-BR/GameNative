@@ -19,6 +19,7 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.GPUInformation;
 import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RuntimeLocaleHelper;
 import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.xconnector.UnixSocketConfig;
@@ -37,6 +38,7 @@ import java.util.List;
 import app.gamenative.PluviaApp;
 import app.gamenative.events.AndroidEvent;
 import app.gamenative.service.SteamService;
+import app.gamenative.service.NativeRuntimeService;
 
 public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent {
     private String guestExecutable;
@@ -75,6 +77,9 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
             copyDefaultBox64RCFile();
             if (preUnpack != null) preUnpack.run();
             pid = execGuestProgram();
+            if (RootPerformanceHelper.isEnabledForContainer(container)) {
+                NativeRuntimeService.start(environment.getContext());
+            }
             RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("GlibcProgramLauncherComponent", "Process " + pid + " started");
             SteamService.setKeepAlive(true);
@@ -223,6 +228,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
         }
         envVars.put("WINEESYNC_WINLATOR", "1");
         if (this.envVars != null) envVars.putAll(this.envVars);
+        RuntimeLocaleHelper.applyToEnvVars(container, envVars);
 
         String box64Path = rootDir.getPath() + "/usr/local/bin/box64";
 
@@ -331,6 +337,7 @@ public class GlibcProgramLauncherComponent extends GuestProgramLauncherComponent
         }
         envVars.put("WINEESYNC_WINLATOR", "1");
         if (this.envVars != null) envVars.putAll(this.envVars);
+        RuntimeLocaleHelper.applyToEnvVars(container, envVars);
 
         String box64Path = rootDir.getPath() + "/usr/local/bin/box64";
 

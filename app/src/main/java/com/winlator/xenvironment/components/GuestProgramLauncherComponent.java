@@ -15,12 +15,15 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.WineInfo;
 import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RuntimeLocaleHelper;
 import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
 import com.winlator.xenvironment.ImageFs;
 import com.winlator.xenvironment.XEnvironment;
+
+import app.gamenative.service.NativeRuntimeService;
 
 import java.io.File;
 import java.util.Arrays;
@@ -63,6 +66,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             stop();
             extractBox86_64Files();
             pid = execGuestProgram();
+            if (RootPerformanceHelper.isEnabledForContainer(container)) {
+                NativeRuntimeService.start(environment.getContext());
+            }
             RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("GuestProgramLauncherComponent", "Process " + pid + " started");
         }
@@ -191,6 +197,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (!wow64Mode) addBox86EnvVars(envVars, enableBox86_64Logs);
         addBox64EnvVars(envVars, enableBox86_64Logs);
         if (this.envVars != null) envVars.putAll(this.envVars);
+        RuntimeLocaleHelper.applyToEnvVars(container, envVars);
 
         return exec(context, !wow64Mode, bindingPaths, envVars, terminationCallback, "box64 " + guestExecutable, workingDir);
     }

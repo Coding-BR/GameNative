@@ -18,6 +18,7 @@ import app.gamenative.PluviaApp
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.service.NotificationHelper
 import com.winlator.container.Container
+import com.winlator.core.RuntimeLocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -535,7 +536,7 @@ class EpicService : Service() {
             container: Container,
             game: EpicGame,
             offline: Boolean = false,
-            languageCode: String = "en-US"
+            languageCode: String = RuntimeLocaleHelper.epicLocaleForContainer(container)
         ): Result<List<String>> {
             return EpicGameLauncher.buildLaunchParameters(context, container, game, offline, languageCode)
         }

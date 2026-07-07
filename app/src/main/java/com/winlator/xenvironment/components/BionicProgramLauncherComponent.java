@@ -30,6 +30,7 @@ import com.winlator.core.envvars.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.GPUInformation;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.RuntimeLocaleHelper;
 import com.winlator.core.RootPerformanceHelper;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.core.WineInfo;
@@ -54,6 +55,7 @@ import java.util.List;
 import app.gamenative.BuildConfig;
 import app.gamenative.PluviaApp;
 import app.gamenative.events.AndroidEvent;
+import app.gamenative.service.NativeRuntimeService;
 import app.gamenative.service.SteamService;
 
 public class BionicProgramLauncherComponent extends GuestProgramLauncherComponent {
@@ -106,6 +108,9 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                 extractBox64Files();
             if (preUnpack != null) preUnpack.run();
             pid = execGuestProgram();
+            if (RootPerformanceHelper.isEnabledForContainer(container)) {
+                NativeRuntimeService.start(environment.getContext());
+            }
             RootPerformanceHelper.applyForContainer(container, pid);
             Log.d("BionicProgramLauncherComponent", "Process " + pid + " started");
             SteamService.setKeepAlive(true);
@@ -344,6 +349,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (this.envVars != null) {
             envVars.putAll(this.envVars);
         }
+        RuntimeLocaleHelper.applyToEnvVars(container, envVars);
 
         if (BuildConfig.XR_BUILD) {
             String shimPath = context.getApplicationInfo().nativeLibraryDir + "/libkgslshim.so";
@@ -734,6 +740,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
 
         String emulator = container.getEmulator();
         if (this.envVars != null) envVars.putAll(this.envVars);
+        RuntimeLocaleHelper.applyToEnvVars(container, envVars);
 
         String finalCommand = getFinalCommand(winePath, emulator, envVars, imageFs.getBinDir(), command);
 

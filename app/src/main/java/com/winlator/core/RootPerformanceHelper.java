@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.InputStreamReader;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +21,12 @@ public final class RootPerformanceHelper {
     private static final long LAUNCH_OPTIMIZATION_WINDOW_MS = 30000;
     private static final long LAUNCH_OPTIMIZATION_INTERVAL_MS = 1000;
     private static final long SESSION_OPTIMIZATION_INTERVAL_MS = 5000;
+    private static final long REAPPLY_OPTIMIZATION_INTERVAL_MS = 10000;
+    private static final long ROOT_AVAILABILITY_CACHE_MS = 60000;
+    private static final int EMPTY_RUNTIME_GRACE_CYCLES = 6;
+    private static volatile Boolean cachedRootAvailable = null;
+    private static volatile long rootAvailabilityExpiresAt = 0;
+    private static volatile String lastStatus = "not_checked";
 
     private RootPerformanceHelper() {}
 
@@ -27,7 +34,9 @@ public final class RootPerformanceHelper {
         Thread worker = new Thread(() -> {
             Log.i(TAG, "Requesting root access for settings toggle");
             CommandResult rootCheck = runSuCommand("id", 3000);
-            if (rootCheck.isSuccess() && rootCheck.output.contains("uid=0")) {
+            boolean rootAvailable = rootCheck.isSuccess() && rootCheck.output.contains("uid=0");
+            updateRootAvailabilityCache(rootAvailable, rootCheck.summary());
+            if (rootAvailable) {
                 Log.i(TAG, "Root access granted for settings toggle. " + rootCheck.summary());
             } else {
                 Log.w(TAG, "Root access unavailable for settings toggle. " + rootCheck.summary());
@@ -62,6 +71,14 @@ public final class RootPerformanceHelper {
         worker.start();
     }
 
+    public static String getLastStatus() {
+        return lastStatus;
+    }
+
+    public static boolean isEnabledForContainer(Container container) {
+        return container != null && resolveProfile(container) != Profile.OFF;
+    }
+
     private static Profile resolveProfile(Container container) {
         String profile = null;
         try {
@@ -89,13 +106,18 @@ public final class RootPerformanceHelper {
     private static void applyInternal(Container container, int mainPid, Profile profile) {
         Log.i(TAG, "Root performance profile " + profile.id + " enabled for pid " + mainPid);
 
-        CommandResult rootCheck = runSuCommand("id", 3000);
-        if (!rootCheck.isSuccess() || !rootCheck.output.contains("uid=0")) {
-            Log.w(TAG, "Root unavailable; continuing without root optimizations. " + rootCheck.summary());
+        if (!isRootAvailable()) {
+            Log.w(TAG, "Root unavailable; continuing without root optimizations. " + lastStatus);
             return;
         }
         Log.i(TAG, "Root available; applying launch-time optimizations for profile " + profile.id);
-        applyAdditionalRootOptimizations();
+        container.putSessionMetadata("native_runtime_profile", profile.id);
+        container.putSessionMetadata("native_runtime_cgroup", profile.atLeast(Profile.PERFORMANCE) ? "requested" : "off");
+        boolean additionalOptimizationsApplied = false;
+        if (profile.atLeast(Profile.PERFORMANCE)) {
+            applyAdditionalRootOptimizations();
+            additionalOptimizationsApplied = true;
+        }
 
         String cpuList = container.getCPUList(true);
         if (profile.atLeast(Profile.PERFORMANCE)) {
@@ -111,11 +133,7 @@ public final class RootPerformanceHelper {
         }
         String primeAffinityMask = null;
         if (profile == Profile.EXTREME) {
-            String primeCpuList = detectPrimeCpuList();
-            primeAffinityMask = buildAffinityMask(primeCpuList);
-            if (primeAffinityMask != null) {
-                Log.i(TAG, "Using prime CPU list for game executable: " + primeCpuList);
-            }
+            Log.i(TAG, "Extreme profile keeps the main game process on the full performance CPU list");
         }
 
         if (profile.atLeast(Profile.PERFORMANCE)) {
@@ -126,8 +144,29 @@ public final class RootPerformanceHelper {
                 affinityMask,
                 primeAffinityMask,
                 container.getExecutablePath(),
-                profile);
+                profile,
+                additionalOptimizationsApplied);
+        lastStatus = "applied profile=" + profile.id + " pid=" + mainPid + " optimizedPids=" + pids.size();
         Log.i(TAG, "Root performance profile " + profile.id + " applied to " + pids.size() + " process(es): " + pids);
+    }
+
+    private static boolean isRootAvailable() {
+        long now = System.currentTimeMillis();
+        Boolean cached = cachedRootAvailable;
+        if (cached != null && now < rootAvailabilityExpiresAt) {
+            return cached;
+        }
+
+        CommandResult rootCheck = runSuCommand("id", 3000);
+        boolean rootAvailable = rootCheck.isSuccess() && rootCheck.output.contains("uid=0");
+        updateRootAvailabilityCache(rootAvailable, rootCheck.summary());
+        return rootAvailable;
+    }
+
+    private static void updateRootAvailabilityCache(boolean available, String summary) {
+        cachedRootAvailable = available;
+        rootAvailabilityExpiresAt = System.currentTimeMillis() + ROOT_AVAILABILITY_CACHE_MS;
+        lastStatus = (available ? "root_available" : "root_unavailable") + " " + summary;
     }
 
     private static Set<Integer> applyProcessOptimizationsForSession(
@@ -135,15 +174,33 @@ public final class RootPerformanceHelper {
             String affinityMask,
             String primeAffinityMask,
             String executablePath,
-            Profile profile) {
+            Profile profile,
+            boolean restoreAdditionalOptimizations) {
         Set<Integer> optimizedPids = new LinkedHashSet<>();
+        Map<Integer, Long> lastOptimizedAt = new HashMap<>();
         long launchDeadline = System.currentTimeMillis() + LAUNCH_OPTIMIZATION_WINDOW_MS;
+        int emptyRuntimeCycles = 0;
 
-        while (new java.io.File("/proc/" + mainPid).exists()) {
+        while (!Thread.currentThread().isInterrupted()) {
+            long now = System.currentTimeMillis();
             Set<Integer> pids = collectTargetPids(mainPid);
+            if (pids.isEmpty()) {
+                emptyRuntimeCycles++;
+                if (emptyRuntimeCycles >= EMPTY_RUNTIME_GRACE_CYCLES) {
+                    Log.i(TAG, "Native runtime monitor stopped after no target process remained for "
+                            + emptyRuntimeCycles + " cycles. mainPid=" + mainPid);
+                    break;
+                }
+            } else {
+                emptyRuntimeCycles = 0;
+            }
             for (int pid : pids) {
-                if (optimizedPids.add(pid)) {
+                Long lastRun = lastOptimizedAt.get(pid);
+                boolean firstRun = optimizedPids.add(pid);
+                boolean shouldReapply = lastRun == null || now - lastRun >= REAPPLY_OPTIMIZATION_INTERVAL_MS;
+                if (firstRun || shouldReapply) {
                     applyOptimizations(pid, affinityMask, primeAffinityMask, executablePath, profile);
+                    lastOptimizedAt.put(pid, now);
                 }
             }
             try {
@@ -157,13 +214,17 @@ public final class RootPerformanceHelper {
             }
         }
 
-        restoreAdditionalRootOptimizations();
+        if (restoreAdditionalOptimizations) {
+            restoreAdditionalRootOptimizations();
+        }
         return optimizedPids;
     }
 
     private static Set<Integer> collectTargetPids(int mainPid) {
         Set<Integer> pids = new LinkedHashSet<>();
-        pids.add(mainPid);
+        if (mainPid > 0 && new java.io.File("/proc/" + mainPid).exists()) {
+            pids.add(mainPid);
+        }
 
         for (ProcessHelper.ProcessInfo process : ProcessHelper.listSubProcesses()) {
             if (process.pid > 0 && isTargetProcess(process.name, readCmdline(process.pid))) pids.add(process.pid);
@@ -243,16 +304,41 @@ public final class RootPerformanceHelper {
         StringBuilder command = new StringBuilder();
         command.append("opt_pid(){ p=\"$1\"; ");
         command.append("[ -d \"/proc/$p\" ] || return 0; ");
+        if (profile.atLeast(Profile.PERFORMANCE)) {
+            command.append("move_member(){ group=\"$1\"; id=\"$2\"; ");
+            command.append("[ -d \"$group\" ] || return 0; ");
+            command.append("[ -w \"$group/cgroup.procs\" ] && echo \"$id\" > \"$group/cgroup.procs\" 2>/dev/null; ");
+            command.append("[ -w \"$group/tasks\" ] && echo \"$id\" > \"$group/tasks\" 2>/dev/null; ");
+            command.append("}; ");
+            command.append("setup_group(){ base=\"$1\"; group=\"$base/gamenative\"; ");
+            command.append("[ -d \"$base\" ] || return 0; ");
+            command.append("[ -d \"$group\" ] || mkdir \"$group\" 2>/dev/null; ");
+            command.append("[ -d \"$group\" ] || return 0; ");
+            command.append("[ -r \"$base/cpus\" ] && [ -w \"$group/cpus\" ] && cat \"$base/cpus\" > \"$group/cpus\" 2>/dev/null; ");
+            command.append("[ -r \"$base/mems\" ] && [ -w \"$group/mems\" ] && cat \"$base/mems\" > \"$group/mems\" 2>/dev/null; ");
+            command.append("[ -w \"$group/sched_load_balance\" ] && echo 1 > \"$group/sched_load_balance\" 2>/dev/null; ");
+            command.append("move_member \"$group\" \"$p\"; ");
+            command.append("}; ");
+            command.append("if [ -w /dev/cpuset/top-app/tasks ]; then echo \"$p\" > /dev/cpuset/top-app/tasks 2>&1; fi; ");
+            command.append("setup_group /dev/cpuset/top-app; setup_group /dev/cpuset; ");
+            command.append("setup_cpuctl(){ base=\"$1\"; group=\"$base/gamenative\"; ");
+            command.append("[ -d \"$base\" ] || return 0; ");
+            command.append("[ -d \"$group\" ] || mkdir \"$group\" 2>/dev/null; ");
+            command.append("[ -d \"$group\" ] || return 0; ");
+            command.append("[ -w \"$group/cpu.uclamp.min\" ] && echo 70 > \"$group/cpu.uclamp.min\" 2>/dev/null; ");
+            command.append("[ -w \"$group/cpu.uclamp.max\" ] && echo 100 > \"$group/cpu.uclamp.max\" 2>/dev/null; ");
+            command.append("[ -w \"$group/cpu.uclamp.latency_sensitive\" ] && echo 1 > \"$group/cpu.uclamp.latency_sensitive\" 2>/dev/null; ");
+            command.append("move_member \"$group\" \"$p\"; ");
+            command.append("}; ");
+            command.append("if [ -w /dev/cpuctl/top-app/tasks ]; then echo \"$p\" > /dev/cpuctl/top-app/tasks 2>&1; fi; ");
+            command.append("setup_cpuctl /dev/cpuctl/top-app; setup_cpuctl /dev/cpuctl; ");
+        }
         command.append("renice -n -10 -p \"$p\" 2>&1; ");
         if (profile.atLeast(Profile.PERFORMANCE)) {
             command.append("if command -v ionice >/dev/null 2>&1; then ionice -c 1 -n 4 -p \"$p\" 2>&1; fi; ");
         }
         if (selectedAffinityMask != null && !selectedAffinityMask.isEmpty()) {
             command.append("taskset -p ").append(selectedAffinityMask).append(" \"$p\" 2>&1; ");
-        }
-        if (profile.atLeast(Profile.PERFORMANCE)) {
-            command.append("if [ -w /dev/cpuctl/top-app/tasks ]; then echo \"$p\" > /dev/cpuctl/top-app/tasks 2>&1; fi; ");
-            command.append("if [ -w /dev/cpuset/top-app/tasks ]; then echo \"$p\" > /dev/cpuset/top-app/tasks 2>&1; fi; ");
         }
         command.append("if [ -w \"/proc/$p/oom_score_adj\" ]; then echo -800 > \"/proc/$p/oom_score_adj\" 2>&1; fi; ");
         command.append("}; ");

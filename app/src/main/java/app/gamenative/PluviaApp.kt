@@ -1,5 +1,6 @@
 package app.gamenative
 
+import android.content.Context
 import android.os.StrictMode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +12,7 @@ import app.gamenative.events.EventDispatcher
 import app.gamenative.service.ActiveGameRegistry
 import app.gamenative.service.DownloadService
 import app.gamenative.service.SteamService
+import app.gamenative.service.NativeRuntimeService
 import app.gamenative.sync.FrontendSyncManager
 import app.gamenative.utils.ContainerMigrator
 import app.gamenative.utils.IntentLaunchManager
@@ -51,6 +53,7 @@ class PluviaApp : SplitCompatApplication() {
 
     override fun onCreate() {
         super.onCreate()
+        appContext = applicationContext
 
         preloadSystemLibraries()
 
@@ -205,6 +208,7 @@ class PluviaApp : SplitCompatApplication() {
         var inputControlsManager: InputControlsManager? = null
         var touchpadView: TouchpadView? = null
         var achievementWatcher: app.gamenative.service.AchievementWatcher? = null
+        lateinit var appContext: Context
 
         var isOverlayPaused by mutableStateOf(false)
         @Volatile
@@ -237,6 +241,8 @@ class PluviaApp : SplitCompatApplication() {
                 .onFailure { Timber.e(it, "shutdownEnvironment: releasePointerCapture") }
             runCatching { env?.stopEnvironmentComponents() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: stopEnvironmentComponents") }
+            runCatching { NativeRuntimeService.stop(appContext) }
+                .onFailure { Timber.e(it, "shutdownEnvironment: NativeRuntimeService.stop") }
 
             xEnvironment = null
             inputControlsView = null

@@ -187,6 +187,18 @@ object IntentLaunchManager {
         val json = JSONObject(jsonString)
 
         // Only include non-default values to avoid overriding existing container settings
+        val rootPerformanceProfile = when {
+            json.has("rootPerformanceProfile") -> {
+                Container.normalizeRootPerformanceProfile(json.getString("rootPerformanceProfile"))
+            }
+            json.optBoolean("rootPerformanceMode", false) -> {
+                Container.ROOT_PERFORMANCE_PERFORMANCE
+            }
+            else -> {
+                Container.ROOT_PERFORMANCE_GLOBAL
+            }
+        }
+
         val config = ContainerData(
             name = if (json.has("name")) json.getString("name") else "",
             screenSize = if (json.has("screenSize")) json.getString("screenSize") else Container.DEFAULT_SCREEN_SIZE,
@@ -210,6 +222,9 @@ object IntentLaunchManager {
             launchBionicSteam = if (json.has("launchBionicSteam")) json.getBoolean("launchBionicSteam") else false,
             cpuList = if (json.has("cpuList")) json.getString("cpuList") else Container.getFallbackCPUList(),
             cpuListWoW64 = if (json.has("cpuListWoW64")) json.getString("cpuListWoW64") else Container.getFallbackCPUListWoW64(),
+            rootPerformanceMode = rootPerformanceProfile != Container.ROOT_PERFORMANCE_OFF &&
+                rootPerformanceProfile != Container.ROOT_PERFORMANCE_GLOBAL,
+            rootPerformanceProfile = rootPerformanceProfile,
             wow64Mode = if (json.has("wow64Mode")) json.getBoolean("wow64Mode") else true,
             startupSelection = if (json.has("startupSelection")) {
                 json.getInt("startupSelection").toByte()
@@ -257,6 +272,12 @@ object IntentLaunchManager {
         // Quick return if no actual overrides
         if (override == base) return base
 
+        val rootPerformanceProfile = if (override.rootPerformanceProfile != Container.ROOT_PERFORMANCE_GLOBAL) {
+            override.rootPerformanceProfile
+        } else {
+            base.rootPerformanceProfile
+        }
+
         return ContainerData(
             name = override.name.ifEmpty { base.name },
             screenSize = if (override.screenSize != Container.DEFAULT_SCREEN_SIZE) {
@@ -297,6 +318,8 @@ object IntentLaunchManager {
             } else {
                 base.cpuListWoW64
             },
+            rootPerformanceMode = rootPerformanceProfile != Container.ROOT_PERFORMANCE_OFF,
+            rootPerformanceProfile = rootPerformanceProfile,
             wow64Mode = if (override.wow64Mode != true) override.wow64Mode else base.wow64Mode,
             startupSelection = if (override.startupSelection != Container.STARTUP_SELECTION_ESSENTIAL.toInt().toByte()) {
                 override.startupSelection
@@ -323,7 +346,11 @@ object IntentLaunchManager {
             enableDInput = if (override.enableDInput != true) override.enableDInput else base.enableDInput,
             dinputMapperType = if (override.dinputMapperType != 1.toByte()) override.dinputMapperType else base.dinputMapperType,
             disableMouseInput = if (override.disableMouseInput != false) override.disableMouseInput else base.disableMouseInput,
-            suspendPolicy = base.suspendPolicy,
+            suspendPolicy = if (override.suspendPolicy != PrefManager.suspendPolicy) {
+                override.suspendPolicy
+            } else {
+                base.suspendPolicy
+            },
             shaderBackend = if (override.shaderBackend != "glsl") override.shaderBackend else base.shaderBackend,
             useGLSL = if (override.useGLSL != "enabled") override.useGLSL else base.useGLSL,
         )

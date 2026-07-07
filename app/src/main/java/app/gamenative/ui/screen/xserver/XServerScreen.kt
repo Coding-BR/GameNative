@@ -380,11 +380,25 @@ fun XServerScreen(
     }
 
     val suspendPolicy = remember(container.id) { container.suspendPolicy }
-    val neverSuspend = suspendPolicy.equals(Container.SUSPEND_POLICY_NEVER, ignoreCase = true)
-    val manualResumeMode = suspendPolicy.equals(Container.SUSPEND_POLICY_MANUAL, ignoreCase = true)
+    val rootPerformanceProfile = remember(container.id, container.rootPerformanceProfile) {
+        val containerProfile = Container.normalizeRootPerformanceProfile(container.rootPerformanceProfile)
+        if (containerProfile == Container.ROOT_PERFORMANCE_GLOBAL) {
+            PrefManager.rootPerformanceProfile
+        } else {
+            containerProfile
+        }
+    }
+    val nativeRuntimeKeepAlive = rootPerformanceProfile != Container.ROOT_PERFORMANCE_OFF
+    val effectiveSuspendPolicy = if (nativeRuntimeKeepAlive) {
+        Container.SUSPEND_POLICY_NEVER
+    } else {
+        suspendPolicy
+    }
+    val neverSuspend = effectiveSuspendPolicy.equals(Container.SUSPEND_POLICY_NEVER, ignoreCase = true)
+    val manualResumeMode = effectiveSuspendPolicy.equals(Container.SUSPEND_POLICY_MANUAL, ignoreCase = true)
 
     SideEffect {
-        PluviaApp.setActiveSuspendPolicy(suspendPolicy)
+        PluviaApp.setActiveSuspendPolicy(effectiveSuspendPolicy)
     }
 
     PluviaApp.events.emit(

@@ -5,6 +5,7 @@ import app.gamenative.data.EpicGame
 import app.gamenative.data.EpicGameToken
 import app.gamenative.utils.sanitizeForFilename
 import com.winlator.container.Container
+import com.winlator.core.RuntimeLocaleHelper
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -31,7 +32,7 @@ object EpicGameLauncher {
         container: Container,
         game: EpicGame,
         offline: Boolean = false,
-        languageCode: String = "en-US"
+        languageCode: String = RuntimeLocaleHelper.epicLocaleForContainer(container)
     ): Result<List<String>> {
         return try {
             val params = mutableListOf<String>()
