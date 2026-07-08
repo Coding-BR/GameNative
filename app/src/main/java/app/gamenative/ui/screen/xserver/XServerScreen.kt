@@ -113,6 +113,7 @@ import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.ExecutableSelectionUtils
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.ManifestComponentHelper
+import app.gamenative.utils.launchdependencies.BionicSteamAssetsDependency
 import app.gamenative.utils.downloader.DXWrapperDownloader
 import app.gamenative.utils.downloader.GraphicsDriverDownloader
 import app.gamenative.utils.PreInstallSteps
@@ -5316,7 +5317,7 @@ private fun extractSteamFiles(
         }
 
         try {
-            val steamExeSource = File(imageFs.getFilesDir(), "steam.exe")
+            val steamExeSource = File(imageFs.getFilesDir(), BionicSteamAssetsDependency.steamExeAssetFor(container))
             if (!steamExeSource.exists()) {
                 Timber.e("steam.exe cache missing at ${steamExeSource.absolutePath} (expected from BionicSteamAssetsDependency)")
             } else {
@@ -5327,6 +5328,10 @@ private fun extractSteamFiles(
         } catch (e: IOException) {
             Timber.e(e, "Failed to copy cached steam.exe")
         }
+
+        // Refresh the prefix lsteamclient.dll from the active Proton's tree every boot,
+        // so switching a container's Proton version can't leave a stale ABI-mismatched DLL.
+        BionicSteamAssetsDependency.copyLsteamclientDllsIntoPrefix(context, container)
 
         try {
             val accountId = SteamService.userSteamId?.accountID?.toInt() ?: 0
@@ -5348,8 +5353,10 @@ private fun extractSteamFiles(
     }
 
     // Real-Steam mode: extract the full real-Steam tree once; subsequent boots
-    val bionicSteamExe = File(imageFs.getFilesDir(), "steam.exe")
-    val installedIsBionic = bionicSteamExe.exists() && FileUtils.contentEquals(steamExe, bionicSteamExe)
+    val installedIsBionic = BionicSteamAssetsDependency.bionicSteamExeNames().any { name ->
+        val cached = File(imageFs.getFilesDir(), name)
+        cached.exists() && FileUtils.contentEquals(steamExe, cached)
+    }
     if (steamExe.exists() && !installedIsBionic) return
 
     val downloaded = File(imageFs.getFilesDir(), "steam.tzst")
