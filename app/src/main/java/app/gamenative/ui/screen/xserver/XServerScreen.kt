@@ -5329,9 +5329,9 @@ private fun extractSteamFiles(
             Timber.e(e, "Failed to copy cached steam.exe")
         }
 
-        // Refresh the prefix lsteamclient.dll from the active Proton's tree every boot,
-        // so switching a container's Proton version can't leave a stale ABI-mismatched DLL.
-        BionicSteamAssetsDependency.copyLsteamclientDllsIntoPrefix(context, container)
+        // Re-extract the active Proton's lsteamclient into its tree + prefix every boot,
+        // so switching a container's Proton version can't leave a stale ABI-mismatched build.
+        BionicSteamAssetsDependency.extractLsteamclientIntoPrefix(context, container)
 
         try {
             val accountId = SteamService.userSteamId?.accountID?.toInt() ?: 0

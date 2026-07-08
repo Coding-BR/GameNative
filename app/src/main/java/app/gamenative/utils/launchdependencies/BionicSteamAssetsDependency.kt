@@ -75,15 +75,9 @@ object BionicSteamAssetsDependency : LaunchDependency {
     private fun system32SrcArchDir(container: Container): String =
         if (container.wineVersion.contains("arm64ec")) "aarch64-windows" else "x86_64-windows"
 
-    private fun unixArchDir(container: Container): String =
-        if (container.wineVersion.contains("arm64ec")) "aarch64-unix" else "x86_64-unix"
-
     /** `lib/wine/` inside the active Proton's install tree, where the archive extracts. */
     private fun wineLibDir(context: Context, container: Container): File =
         File(wineInstallDir(context, container), "lib/wine")
-
-    private fun unixSoIn(wineLibDir: File, container: Container): File =
-        File(wineLibDir, "${unixArchDir(container)}/lsteamclient.so")
 
     private fun treeSystem32DllIn(wineLibDir: File, container: Container): File =
         File(wineLibDir, "${system32SrcArchDir(container)}/$LSTEAMCLIENT_DLL")
@@ -118,21 +112,30 @@ object BionicSteamAssetsDependency : LaunchDependency {
         File(imageFs.libDir, LIBSTEAMCLIENT_SO)
 
     /**
-     * Copies the active Proton's lsteamclient PE DLLs from its install tree into
-     * the container prefix (system32 + syswow64), overwriting any previous copy.
-     * Run every boot (like steam.exe) so switching a container's Proton version
-     * can't leave a stale, ABI-mismatched DLL behind. No-op for wine versions
-     * without a bundled lsteamclient.
+     * Extracts the active Proton's lsteamclient archive (downloaded by [install])
+     * into that Proton's install tree, then copies the PE DLLs into the container
+     * prefix (system32 + syswow64). Run every boot and always overwrites, so
+     * switching a container's Proton version can never leave a stale, ABI-
+     * mismatched lsteamclient behind. No-op for wine versions without a bundled
+     * lsteamclient, or if the archive hasn't been downloaded yet.
      */
-    fun copyLsteamclientDllsIntoPrefix(context: Context, container: Container) {
-        if (lsteamclientArchiveFor(container) == null) return
-        val libDir = wineLibDir(context, container)
-        val sys32Src = treeSystem32DllIn(libDir, container)
-        val sysWowSrc = treeSyswow64DllIn(libDir)
-        if (!sys32Src.exists() || !sysWowSrc.exists()) {
-            Timber.e("lsteamclient tree DLLs missing under ${libDir.absolutePath}; prefix copy skipped")
+    fun extractLsteamclientIntoPrefix(context: Context, container: Container) {
+        val archive = lsteamclientArchiveFor(container) ?: return
+        val imageFs = ImageFs.find(context)
+        val archiveCache = File(imageFs.filesDir, archive)
+        if (!archiveCache.exists()) {
+            Timber.e("lsteamclient archive $archive not downloaded; extract skipped")
             return
         }
+        val libDir = wineLibDir(context, container)
+        libDir.mkdirs()
+        Timber.i("Extracting $archive into ${libDir.absolutePath}")
+        if (!TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, archiveCache, libDir)) {
+            Timber.e("Failed to extract $archive into ${libDir.absolutePath}")
+            return
+        }
+        val sys32Src = treeSystem32DllIn(libDir, container)
+        val sysWowSrc = treeSyswow64DllIn(libDir)
         val dstSystem32 = system32Dll(container)
         val dstSyswow64 = syswow64Dll(container)
         dstSystem32.parentFile?.mkdirs()
@@ -155,15 +158,11 @@ object BionicSteamAssetsDependency : LaunchDependency {
         if (!File(filesDir, CACERT_PEM).exists()) return false
         if (!File(filesDir, STEAMCLIENT_DLLS_ARCHIVE).exists()) return false
         if (!libsteamclientSo(imageFs).exists()) return false
-        if (lsteamclientArchiveFor(container) != null) {
-            // Only the Proton-tree extraction is cached here (it's Proton-specific,
-            // so it never goes stale). The prefix DLL copy is redone every boot by
-            // copyLsteamclientDllsIntoPrefix, so it isn't checked here.
-            val libDir = wineLibDir(context, container)
-            if (!unixSoIn(libDir, container).exists()) return false
-            if (!treeSystem32DllIn(libDir, container).exists()) return false
-            if (!treeSyswow64DllIn(libDir).exists()) return false
-        }
+        // Only ensures the archive is downloaded. The extract into the Proton tree
+        // + copy into the prefix happen every boot in extractLsteamclientIntoPrefix
+        // (always overwriting), so they aren't cached here.
+        val lsteamclientArchive = lsteamclientArchiveFor(container)
+        if (lsteamclientArchive != null && !File(filesDir, lsteamclientArchive).exists()) return false
         return true
     }
 
@@ -221,44 +220,21 @@ object BionicSteamAssetsDependency : LaunchDependency {
             }
         }
 
-        // 2/3. lsteamclient archive for the active Proton variant. Extracted into the
-        // Proton's own tree (Proton-specific, so cached here); the prefix DLL copy is
-        // redone every boot in copyLsteamclientDllsIntoPrefix.
+        // 2/3. Download the lsteamclient archive for the active Proton variant. The
+        // extract into the Proton tree + copy into the prefix happen every boot in
+        // extractLsteamclientIntoPrefix (always overwriting), not here.
         val lsteamclientArchive = lsteamclientArchiveFor(container)
         if (lsteamclientArchive != null) {
-            val wineLibDir = wineLibDir(context, container)
-            val treePresent = withContext(Dispatchers.IO) {
-                unixSoIn(wineLibDir, container).exists() &&
-                    treeSystem32DllIn(wineLibDir, container).exists() &&
-                    treeSyswow64DllIn(wineLibDir).exists()
-            }
-            if (!treePresent) {
-                val archiveCache = File(filesDir, lsteamclientArchive)
-                if (!withContext(Dispatchers.IO) { archiveCache.exists() }) {
-                    callbacks.setLoadingMessage("Downloading $lsteamclientArchive")
-                    withContext(Dispatchers.IO) {
-                        SteamService.downloadFile(
-                            onDownloadProgress = { callbacks.setLoadingProgress(it) },
-                            parentScope = this@coroutineScope,
-                            context = context,
-                            fileName = lsteamclientArchive,
-                        ).await()
-                    }
-                }
-
-                callbacks.setLoadingMessage("Extracting lsteamclient")
-                callbacks.setLoadingProgress(LOADING_PROGRESS_UNKNOWN)
+            val archiveCache = File(filesDir, lsteamclientArchive)
+            if (!withContext(Dispatchers.IO) { archiveCache.exists() }) {
+                callbacks.setLoadingMessage("Downloading $lsteamclientArchive")
                 withContext(Dispatchers.IO) {
-                    wineLibDir.mkdirs()
-                    Timber.i("Extracting $lsteamclientArchive into ${wineLibDir.absolutePath}")
-                    val ok = TarCompressorUtils.extract(
-                        TarCompressorUtils.Type.ZSTD,
-                        archiveCache,
-                        wineLibDir,
-                    )
-                    if (!ok) {
-                        throw IllegalStateException("Failed to extract $lsteamclientArchive into ${wineLibDir.absolutePath}")
-                    }
+                    SteamService.downloadFile(
+                        onDownloadProgress = { callbacks.setLoadingProgress(it) },
+                        parentScope = this@coroutineScope,
+                        context = context,
+                        fileName = lsteamclientArchive,
+                    ).await()
                 }
             }
         }
