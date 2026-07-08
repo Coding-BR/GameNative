@@ -240,7 +240,6 @@ public final class RootPerformanceHelper {
             Profile profile,
             boolean restoreAdditionalOptimizations) {
         Set<Integer> optimizedPids = new LinkedHashSet<>();
-        Map<Integer, Long> lastOptimizedAt = new HashMap<>();
         long launchDeadline = System.currentTimeMillis() + LAUNCH_OPTIMIZATION_WINDOW_MS;
         int emptyRuntimeCycles = 0;
 
@@ -258,12 +257,8 @@ public final class RootPerformanceHelper {
                 emptyRuntimeCycles = 0;
             }
             for (int pid : pids) {
-                Long lastRun = lastOptimizedAt.get(pid);
-                boolean firstRun = optimizedPids.add(pid);
-                boolean shouldReapply = lastRun == null || now - lastRun >= REAPPLY_OPTIMIZATION_INTERVAL_MS;
-                if (firstRun || shouldReapply) {
+                if (optimizedPids.add(pid)) {
                     applyOptimizations(pid, gameAffinityMask, serverAffinityMask, helperAffinityMask, audioAffinityMask, executablePath, profile);
-                    lastOptimizedAt.put(pid, now);
                 }
             }
             try {
@@ -425,27 +420,27 @@ public final class RootPerformanceHelper {
             command.append("[ -w \"$group/tasks\" ] && echo \"$id\" > \"$group/tasks\" 2>/dev/null; ");
             command.append("}; ");
             command.append("setup_group(){ base=\"$1\"; group=\"$base/gamenative\"; ");
-            command.append("[ -d \"$base\" ] || return 0; ");
+            command.append("[ -d \"$base\" ] || return 1; ");
             command.append("[ -d \"$group\" ] || mkdir \"$group\" 2>/dev/null; ");
-            command.append("[ -d \"$group\" ] || return 0; ");
+            command.append("[ -d \"$group\" ] || return 1; ");
             command.append("[ -r \"$base/cpus\" ] && [ -w \"$group/cpus\" ] && cat \"$base/cpus\" > \"$group/cpus\" 2>/dev/null; ");
             command.append("[ -r \"$base/mems\" ] && [ -w \"$group/mems\" ] && cat \"$base/mems\" > \"$group/mems\" 2>/dev/null; ");
             command.append("[ -w \"$group/sched_load_balance\" ] && echo 1 > \"$group/sched_load_balance\" 2>/dev/null; ");
-            command.append("move_member \"$group\" \"$p\"; ");
+            command.append("move_member \"$group\" \"$p\"; return 0; ");
             command.append("}; ");
             command.append("if [ -w /dev/cpuset/top-app/tasks ]; then echo \"$p\" > /dev/cpuset/top-app/tasks 2>&1; fi; ");
-            command.append("setup_group /dev/cpuset/top-app; setup_group /dev/cpuset; ");
+            command.append("setup_group /dev/cpuset/top-app || setup_group /dev/cpuset; ");
             command.append("setup_cpuctl(){ base=\"$1\"; group=\"$base/gamenative\"; ");
-            command.append("[ -d \"$base\" ] || return 0; ");
+            command.append("[ -d \"$base\" ] || return 1; ");
             command.append("[ -d \"$group\" ] || mkdir \"$group\" 2>/dev/null; ");
-            command.append("[ -d \"$group\" ] || return 0; ");
+            command.append("[ -d \"$group\" ] || return 1; ");
             command.append("[ -w \"$group/cpu.uclamp.min\" ] && echo 70 > \"$group/cpu.uclamp.min\" 2>/dev/null; ");
             command.append("[ -w \"$group/cpu.uclamp.max\" ] && echo 100 > \"$group/cpu.uclamp.max\" 2>/dev/null; ");
             command.append("[ -w \"$group/cpu.uclamp.latency_sensitive\" ] && echo 1 > \"$group/cpu.uclamp.latency_sensitive\" 2>/dev/null; ");
-            command.append("move_member \"$group\" \"$p\"; ");
+            command.append("move_member \"$group\" \"$p\"; return 0; ");
             command.append("}; ");
             command.append("if [ -w /dev/cpuctl/top-app/tasks ]; then echo \"$p\" > /dev/cpuctl/top-app/tasks 2>&1; fi; ");
-            command.append("setup_cpuctl /dev/cpuctl/top-app; setup_cpuctl /dev/cpuctl; ");
+            command.append("setup_cpuctl /dev/cpuctl/top-app || setup_cpuctl /dev/cpuctl; ");
         }
         command.append("renice -n -10 -p \"$p\" 2>&1; ");
         if (profile.atLeast(Profile.PERFORMANCE)) {
