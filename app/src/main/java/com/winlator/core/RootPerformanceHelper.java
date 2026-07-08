@@ -353,6 +353,45 @@ public final class RootPerformanceHelper {
         }
     }
 
+    private static boolean isHelperOrLauncher(String cmdline) {
+        if (cmdline == null || cmdline.isEmpty()) return true;
+        String lower = cmdline.toLowerCase().replace('\\', '/');
+
+        if (lower.contains("/installers/")
+                || lower.contains("installer")
+                || lower.contains("setup")
+                || lower.contains("installshield")
+                || lower.contains("vcredist")
+                || lower.contains("dxsetup")
+                || lower.contains("redist")
+                || lower.contains("rockstar")
+                || lower.contains("socialclub")
+                || lower.contains("launcher")
+                || lower.contains("updater")
+                || lower.contains("update")
+                || lower.contains("steam.exe")
+                || lower.contains("steamwebhelper")
+                || lower.contains("epicgames")
+                || lower.contains("epicwebhelper")
+                || lower.contains("galaxyclient")) {
+            return true;
+        }
+
+        if (lower.contains("winedevice.exe")
+                || lower.contains("services.exe")
+                || lower.contains("explorer.exe")
+                || lower.contains("rpcss.exe")
+                || lower.contains("plugplay.exe")
+                || lower.contains("conhost.exe")
+                || lower.contains("svchost.exe")
+                || lower.contains("desktop.exe")
+                || lower.contains("rundll32.exe")) {
+            return true;
+        }
+
+        return false;
+    }
+
     private static void applyOptimizations(
             int pid,
             String gameAffinityMask,
@@ -365,15 +404,15 @@ public final class RootPerformanceHelper {
         String selectedAffinityMask = helperAffinityMask;
         String typeLabel = "helper";
 
-        if (isMainGameProcess(cmdline, executablePath)) {
-            selectedAffinityMask = gameAffinityMask;
-            typeLabel = "game";
-        } else if (cmdline.contains("wineserver")) {
+        if (cmdline.contains("wineserver")) {
             selectedAffinityMask = serverAffinityMask;
             typeLabel = "wineserver";
         } else if (cmdline.contains("pulseaudio") || cmdline.contains("aserver")) {
             selectedAffinityMask = audioAffinityMask;
             typeLabel = "audio";
+        } else if (isMainGameProcess(cmdline, executablePath) || !isHelperOrLauncher(cmdline)) {
+            selectedAffinityMask = gameAffinityMask;
+            typeLabel = "game";
         }
 
         StringBuilder command = new StringBuilder();

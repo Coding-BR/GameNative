@@ -221,9 +221,9 @@ jobs:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         # Read via env to avoid shell-quoting traps with multiline changelogs.
         CHANGELOG: ${{ steps.changelog.outputs.log }}
-        LEGACY_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed.zip
-        MODERN_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-modern.zip
-        LEGACY_XR_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-legacy-xr.zip
+        LEGACY_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed.zip
+        MODERN_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed-modern.zip
+        LEGACY_XR_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed-legacy-xr.zip
       run: |
         if [ -z "$DISCORD_WEBHOOK_URL" ]; then
           echo "Discord webhook URL is not set. Skipping notification."
