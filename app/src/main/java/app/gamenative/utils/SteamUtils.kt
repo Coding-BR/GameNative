@@ -19,6 +19,7 @@ import app.gamenative.service.SteamService.Companion.getAppInfoOf
 import app.gamenative.ui.component.TIMEOUT_SHOW_OFFLINE_OPTION_SECONDS
 import app.gamenative.workshop.compatibility.SlayTheSpireModTheSpireCompatibility
 import com.winlator.container.Container
+import com.winlator.core.RuntimeLocaleHelper
 import com.winlator.core.TarCompressorUtils
 import com.winlator.core.WineRegistryEditor
 import com.winlator.xenvironment.ImageFs
@@ -759,8 +760,10 @@ object SteamUtils {
                     appendLine("\t}")
                 }
 
-                appendLine("\t\"UserConfig\" { \"language\" \"english\" }")
-                appendLine("\t\"MountedConfig\" { \"language\" \"english\" }")
+                val container = ContainerUtils.getOrCreateContainer(context, "STEAM_$steamAppId")
+                val language = RuntimeLocaleHelper.steamLanguageForContainer(container)
+                appendLine("\t\"UserConfig\" { \"language\" \"$language\" }")
+                appendLine("\t\"MountedConfig\" { \"language\" \"$language\" }")
 
                 appendLine("}")
             }
@@ -1470,7 +1473,7 @@ object SteamUtils {
                 vdfData.saveToFile(localConfigFile, false)
             }
 
-            val userLanguage = container.language
+            val userLanguage = RuntimeLocaleHelper.steamLanguageForContainer(container)
             val steamappsDir = File(steamPath, "steamapps")
             val appManifestFile = File(steamappsDir, "appmanifest_$appId.acf")
 

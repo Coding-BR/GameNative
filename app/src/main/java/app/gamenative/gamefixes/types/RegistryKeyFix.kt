@@ -3,12 +3,14 @@ package app.gamenative.gamefixes
 import android.content.Context
 import app.gamenative.data.GameSource
 import com.winlator.container.Container
+import com.winlator.core.RuntimeLocaleHelper
 import com.winlator.core.WineRegistryEditor
 import com.winlator.xenvironment.ImageFs
 import timber.log.Timber
 import java.io.File
 
 const val INSTALL_PATH_PLACEHOLDER = "<InstallPath>"
+const val INSTALLER_LANGUAGE_PLACEHOLDER = "<InstallerLanguage>"
 
 class RegistryKeyFix(
     private val registryKey: String,
@@ -28,8 +30,13 @@ class RegistryKeyFix(
             return false
         }
         val installPathWin = installPathWindows.replace("/", "\\")
+        val installerLanguage = RuntimeLocaleHelper.installerLanguageForContainer(container)
         val values = defaultValues.mapValues { (_, v) ->
-            if (v == INSTALL_PATH_PLACEHOLDER) installPathWin else v
+            when (v) {
+                INSTALL_PATH_PLACEHOLDER -> installPathWin
+                INSTALLER_LANGUAGE_PLACEHOLDER -> installerLanguage
+                else -> v
+            }
         }
         return try {
             WineRegistryEditor(systemRegFile).use { editor ->

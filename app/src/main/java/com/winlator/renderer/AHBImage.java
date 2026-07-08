@@ -43,7 +43,7 @@ public class AHBImage extends NativeTexture {
 
         boolean swapchainOk = true;
         for (int i = 0; i < swapchainAhbs.length; i++) {
-            swapchainAhbs[i] = createHardwareBuffer(width, height);
+            swapchainAhbs[i] = createScanoutHardwareBuffer(width, height);
             if (swapchainAhbs[i] == 0) swapchainOk = false;
         }
 
@@ -206,6 +206,8 @@ public class AHBImage extends NativeTexture {
     private native long hardwareBufferFromSocket(int fd);
 
     private native long createHardwareBuffer(short width, short height);
+
+    private native long createScanoutHardwareBuffer(short width, short height);
 
     private native void destroyHardwareBuffer(long hardwareBufferPtr);
 

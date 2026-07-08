@@ -127,27 +127,88 @@ public final class RootPerformanceHelper {
                 Log.i(TAG, "Using detected high-performance CPU list: " + cpuList);
             }
         }
-        String affinityMask = buildAffinityMask(cpuList);
-        if (affinityMask == null) {
-            Log.w(TAG, "Invalid CPU affinity list, skipping taskset: " + cpuList);
+
+        // Parse cpuList into a Set of integers
+        Set<Integer> allPerfCores = new java.util.LinkedHashSet<>();
+        if (cpuList != null) {
+            for (String s : cpuList.split(",")) {
+                try {
+                    allPerfCores.add(Integer.parseInt(s.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
         }
-        String primeAffinityMask = null;
-        if (profile == Profile.EXTREME) {
-            Log.i(TAG, "Extreme profile keeps the main game process on the full performance CPU list");
+
+        // Detect prime cores
+        String primeCpuList = detectPrimeCpuList();
+        Set<Integer> primeCores = new java.util.LinkedHashSet<>();
+        if (primeCpuList != null) {
+            for (String s : primeCpuList.split(",")) {
+                try {
+                    primeCores.add(Integer.parseInt(s.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
         }
+
+        // Get big non-prime cores
+        Set<Integer> bigNonPrimeCores = new java.util.LinkedHashSet<>();
+        for (int core : allPerfCores) {
+            if (!primeCores.contains(core)) {
+                bigNonPrimeCores.add(core);
+            }
+        }
+
+        // Build process-type-specific CPU lists
+        // 1. Game Process: all performance cores
+        String gameCpuList = cpuList;
+
+        // 2. Wineserver: big cores if available, fallback to all performance cores
+        Set<Integer> serverCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
+        String serverCpuList = joinInts(serverCores);
+
+        // 3. Helpers/Launchers: first 4 of big performance cores
+        Set<Integer> helperCores = new java.util.LinkedHashSet<>();
+        int count = 0;
+        Set<Integer> sourceCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
+        for (int core : sourceCores) {
+            helperCores.add(core);
+            count++;
+            if (count >= 4) break;
+        }
+        String helperCpuList = joinInts(helperCores);
+
+        // 4. Audio engine: same as helper list (stable, off prime cores)
+        String audioCpuList = helperCpuList;
+
+        Log.i(TAG, "CPU Affinity partitioning: Game=[" + gameCpuList + "], Wineserver=[" + serverCpuList + "], Helpers=[" + helperCpuList + "], Audio=[" + audioCpuList + "]");
+
+        String gameAffinityMask = buildAffinityMask(gameCpuList);
+        String serverAffinityMask = buildAffinityMask(serverCpuList);
+        String helperAffinityMask = buildAffinityMask(helperCpuList);
+        String audioAffinityMask = buildAffinityMask(audioCpuList);
 
         if (profile.atLeast(Profile.PERFORMANCE)) {
             Log.i(TAG, "Skipping system-wide root performance writes for Android stability");
         }
         Set<Integer> pids = applyProcessOptimizationsForSession(
                 mainPid,
-                affinityMask,
-                primeAffinityMask,
+                gameAffinityMask,
+                serverAffinityMask,
+                helperAffinityMask,
+                audioAffinityMask,
                 container.getExecutablePath(),
                 profile,
                 additionalOptimizationsApplied);
         lastStatus = "applied profile=" + profile.id + " pid=" + mainPid + " optimizedPids=" + pids.size();
         Log.i(TAG, "Root performance profile " + profile.id + " applied to " + pids.size() + " process(es): " + pids);
+    }
+
+    private static String joinInts(Set<Integer> set) {
+        StringBuilder sb = new StringBuilder();
+        for (int i : set) {
+            if (sb.length() > 0) sb.append(",");
+            sb.append(i);
+        }
+        return sb.toString();
     }
 
     private static boolean isRootAvailable() {
@@ -171,8 +232,10 @@ public final class RootPerformanceHelper {
 
     private static Set<Integer> applyProcessOptimizationsForSession(
             int mainPid,
-            String affinityMask,
-            String primeAffinityMask,
+            String gameAffinityMask,
+            String serverAffinityMask,
+            String helperAffinityMask,
+            String audioAffinityMask,
             String executablePath,
             Profile profile,
             boolean restoreAdditionalOptimizations) {
@@ -199,7 +262,7 @@ public final class RootPerformanceHelper {
                 boolean firstRun = optimizedPids.add(pid);
                 boolean shouldReapply = lastRun == null || now - lastRun >= REAPPLY_OPTIMIZATION_INTERVAL_MS;
                 if (firstRun || shouldReapply) {
-                    applyOptimizations(pid, affinityMask, primeAffinityMask, executablePath, profile);
+                    applyOptimizations(pid, gameAffinityMask, serverAffinityMask, helperAffinityMask, audioAffinityMask, executablePath, profile);
                     lastOptimizedAt.put(pid, now);
                 }
             }
@@ -292,14 +355,26 @@ public final class RootPerformanceHelper {
 
     private static void applyOptimizations(
             int pid,
-            String affinityMask,
-            String primeAffinityMask,
+            String gameAffinityMask,
+            String serverAffinityMask,
+            String helperAffinityMask,
+            String audioAffinityMask,
             String executablePath,
             Profile profile) {
         String cmdline = readCmdline(pid);
-        String selectedAffinityMask = shouldPreferPrimeCores(cmdline, executablePath, profile)
-                ? primeAffinityMask
-                : affinityMask;
+        String selectedAffinityMask = helperAffinityMask;
+        String typeLabel = "helper";
+
+        if (isMainGameProcess(cmdline, executablePath)) {
+            selectedAffinityMask = gameAffinityMask;
+            typeLabel = "game";
+        } else if (cmdline.contains("wineserver")) {
+            selectedAffinityMask = serverAffinityMask;
+            typeLabel = "wineserver";
+        } else if (cmdline.contains("pulseaudio") || cmdline.contains("aserver")) {
+            selectedAffinityMask = audioAffinityMask;
+            typeLabel = "audio";
+        }
 
         StringBuilder command = new StringBuilder();
         command.append("opt_pid(){ p=\"$1\"; ");
@@ -350,15 +425,14 @@ public final class RootPerformanceHelper {
 
         CommandResult result = runSuCommand(command.toString(), 5000);
         if (result.isSuccess()) {
-            Log.d(TAG, "Applied " + profile.id + " root optimizations to pid " + pid + ". " + result.summary());
+            Log.d(TAG, "Applied " + profile.id + " root optimizations to " + typeLabel + " process (pid " + pid + "). " + result.summary());
         } else {
-            Log.w(TAG, "Failed to apply " + profile.id + " root optimizations to pid " + pid + ". " + result.summary());
+            Log.w(TAG, "Failed to apply " + profile.id + " root optimizations to " + typeLabel + " process (pid " + pid + "). " + result.summary());
         }
     }
 
-    private static boolean shouldPreferPrimeCores(String cmdline, String executablePath, Profile profile) {
-        if (profile != Profile.EXTREME || executablePath == null || executablePath.isEmpty()) return false;
-        if (cmdline == null || cmdline.isEmpty()) return false;
+    private static boolean isMainGameProcess(String cmdline, String executablePath) {
+        if (executablePath == null || executablePath.isEmpty() || cmdline == null || cmdline.isEmpty()) return false;
         String executable = executablePath.replace('\\', '/');
         int slash = executable.lastIndexOf('/');
         if (slash >= 0) executable = executable.substring(slash + 1);
@@ -592,6 +666,38 @@ public final class RootPerformanceHelper {
             String text = output.length() > 240 ? output.substring(0, 240) + "..." : output;
             return "exitCode=" + exitCode + ", timedOut=" + timedOut + ", output=" + text;
         }
+    }
+
+    private static int getMaxThermalTemperature() {
+        int maxTemp = -1;
+        try {
+            File thermalDir = new File("/sys/class/thermal");
+            if (!thermalDir.isDirectory()) {
+                thermalDir = new File("/sys/devices/virtual/thermal");
+            }
+            if (thermalDir.isDirectory()) {
+                File[] zones = thermalDir.listFiles((dir, name) -> name.startsWith("thermal_zone"));
+                if (zones != null) {
+                    for (File zone : zones) {
+                        File tempFile = new File(zone, "temp");
+                        if (tempFile.isFile() && tempFile.canRead()) {
+                            try (FileReader reader = new FileReader(tempFile);
+                                 BufferedReader br = new BufferedReader(reader)) {
+                                String line = br.readLine();
+                                if (line != null) {
+                                    int raw = Integer.parseInt(line.trim());
+                                    int celsius = raw > 1000 ? raw / 1000 : raw;
+                                    if (celsius > maxTemp && celsius < 150) {
+                                        maxTemp = celsius;
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return maxTemp;
     }
 
     private enum Profile {

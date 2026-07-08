@@ -78,6 +78,38 @@ fun SettingsGroupDebug() {
         onDismiss = { showChannelsDialog = false }
     )
 
+    /* Diagnostics stuff */
+    var showDiagnosticsDialog by rememberSaveable { mutableStateOf(false) }
+    var diagnosticText by remember { mutableStateOf("") }
+
+    val saveDiagnostics = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+    ) { resultUri ->
+        try {
+            resultUri?.let { uri ->
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(diagnosticText.toByteArray())
+                }
+                SnackbarManager.show("Diagnostics saved successfully")
+            }
+        } catch (e: Exception) {
+            SnackbarManager.show("Failed to save diagnostics")
+        }
+    }
+
+    if (showDiagnosticsDialog) {
+        LaunchedEffect(Unit) {
+            diagnosticText = generateDiagnosticReport(context)
+        }
+        CrashLogDialog(
+            visible = true,
+            fileName = "gamenative_diagnostics.txt",
+            fileText = if (diagnosticText.isEmpty()) "Loading..." else diagnosticText,
+            onSave = { saveDiagnostics.launch("gamenative_diagnostics.txt") },
+            onDismissRequest = { showDiagnosticsDialog = false },
+        )
+    }
+
     /* Crash Log stuff */
     var showLogcatDialog by rememberSaveable { mutableStateOf(false) }
     // states for debug toggles
@@ -224,6 +256,13 @@ fun SettingsGroupDebug() {
         )
         SettingsMenuLink(
             colors = settingsTileColors(),
+            title = { Text(text = "Diagnostics & Root Boost") },
+            subtitle = { Text(text = "View Wine locale, active CPU sets, affinity masks and process metrics") },
+            onClick = { showDiagnosticsDialog = true },
+        )
+
+        SettingsMenuLink(
+            colors = settingsTileColors(),
             title = { Text(text = stringResource(R.string.settings_debug_view_crash_title)) },
             subtitle = {
                 Text(
@@ -328,5 +367,121 @@ private fun readTail(file: File?): String {
         }
     } catch (e: Exception) {
         "Failed to read file: ${e.message ?: e.javaClass.simpleName}"
+    }
+}
+
+private fun generateDiagnosticReport(context: android.content.Context): String {
+    val sb = java.lang.StringBuilder()
+    sb.append("========================================\n")
+    sb.append("      GAMENATIVE DIAGNOSTICS REPORT     \n")
+    sb.append("========================================\n\n")
+
+    // 1. Root Boost status
+    sb.append("--- ROOT BOOST STATUS ---\n")
+    sb.append("Status: ").append(com.winlator.core.RootPerformanceHelper.getLastStatus()).append("\n")
+    val maxTemp = runCatching {
+        val file = java.io.File("/sys/class/thermal")
+        var maxVal = -1
+        val files = file.listFiles { f -> f.name.startsWith("thermal_zone") }
+        files?.forEach { zone ->
+            val tempFile = java.io.File(zone, "temp")
+            if (tempFile.isFile && tempFile.canRead()) {
+                val raw = tempFile.readText().trim().toIntOrNull() ?: 0
+                val celsius = if (raw > 1000) raw / 1000 else raw
+                if (celsius > maxVal && celsius < 150) maxVal = celsius
+            }
+        }
+        maxVal
+    }.getOrDefault(-1)
+    sb.append("Max Temperature: ").append(if (maxTemp > 0) "$maxTemp°C" else "unknown").append("\n\n")
+
+    // 2. Container locale and mappings
+    sb.append("--- LOCALE & TRANSLATION MAPPINGS ---\n")
+    val containerManager = com.winlator.container.ContainerManager(context)
+    val containers = containerManager.containers
+    if (containers.isEmpty()) {
+        sb.append("No containers found.\n")
+    } else {
+        for (container in containers) {
+            sb.append("Container: ").append(container.name).append(" (ID: ").append(container.id).append(")\n")
+            val rawLang = container.language ?: "english"
+            sb.append("  Raw Language: ").append(rawLang).append("\n")
+            val steamLang = com.winlator.core.RuntimeLocaleHelper.steamLanguageForContainer(container)
+            sb.append("  Steam Language: ").append(steamLang).append("\n")
+            val wineLocale = com.winlator.core.RuntimeLocaleHelper.localeForContainer(container)
+            sb.append("  Wine Locale: ").append(wineLocale).append("\n")
+            val epicLocale = com.winlator.core.RuntimeLocaleHelper.epicLocaleForContainer(container)
+            sb.append("  Epic Locale: ").append(epicLocale).append("\n")
+            val installerLang = com.winlator.core.RuntimeLocaleHelper.installerLanguageForContainer(container)
+            sb.append("  Installer Language: ").append(installerLang).append("\n\n")
+        }
+    }
+
+    // 3. System-wide Cpuset
+    sb.append("--- SYSTEM CPUSETS ---\n")
+    val devCpusetCpus = readFirstLine("/dev/cpuset/cpus")
+    sb.append("Global dev/cpuset/cpus: ").append(devCpusetCpus).append("\n")
+    val topAppCpus = readFirstLine("/dev/cpuset/top-app/cpus")
+    sb.append("top-app/cpus: ").append(topAppCpus).append("\n")
+    val gamenativeCpus = readFirstLine("/dev/cpuset/top-app/gamenative/cpus")
+    if (gamenativeCpus.isNotEmpty()) {
+        sb.append("top-app/gamenative/cpus: ").append(gamenativeCpus).append("\n")
+    } else {
+        sb.append("top-app/gamenative/cpus: not initialized\n")
+    }
+    sb.append("\n")
+
+    // 4. Running processes CPU affinity and cpusets
+    sb.append("--- ACTIVE CONTAINER PROCESSES ---\n")
+    val processes = com.winlator.core.ProcessHelper.listSubProcesses()
+    val targetProcesses = processes.filter { process ->
+        val name = process.name ?: ""
+        val pid = process.pid
+        val cmdline = runCatching {
+            val file = java.io.File("/proc/$pid/cmdline")
+            if (file.isFile && file.canRead()) {
+                file.readText().replace('\u0000', ' ').trim()
+            } else ""
+        }.getOrDefault("")
+        
+        val lower = (name + " " + cmdline).lowercase()
+        lower.contains("wine") || lower.contains("wineserver") || lower.contains("box64") || 
+        lower.contains("box86") || lower.contains("fex") || lower.contains("pulseaudio") || 
+        lower.contains("gamenative")
+    }
+
+    if (targetProcesses.isEmpty()) {
+        sb.append("No active container processes found.\n")
+    } else {
+        sb.append(String.format("%-6s %-10s %-25s %-12s %-12s\n", "PID", "RSS(MB)", "NAME", "CPUSET", "AFFINITY"))
+        sb.append("----------------------------------------------------------------------\n")
+        for (process in targetProcesses) {
+            val pid = process.pid
+            val rssMb = process.rssBytes / (1024 * 1024)
+            val name = process.name ?: "unknown"
+            val cpuset = readFirstLine("/proc/$pid/cpuset").trim()
+            val statusFile = java.io.File("/proc/$pid/status")
+            var affinity = "unknown"
+            if (statusFile.exists() && statusFile.canRead()) {
+                statusFile.forEachLine { line ->
+                    if (line.startsWith("Cpus_allowed_list:")) {
+                        affinity = line.replace("Cpus_allowed_list:", "").trim()
+                    }
+                }
+            }
+            sb.append(String.format("%-6d %-10d %-25s %-12s %-12s\n", pid, rssMb, name, cpuset, affinity))
+        }
+    }
+    sb.append("\n========================================\n")
+    return sb.toString()
+}
+
+private fun readFirstLine(path: String): String {
+    val file = java.io.File(path)
+    if (!file.isFile() || !file.canRead()) return ""
+    return try {
+        file.bufferedReader().use { it.readLine() ?: "" }
+    } catch (e: Exception) {
+        ""
     }
 }

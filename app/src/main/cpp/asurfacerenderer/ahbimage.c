@@ -206,14 +206,12 @@ Java_com_winlator_renderer_AHBImage_copyHardwareBuffer(
         return -1;
     }
 
-    if ((uint32_t)width == (uint32_t)srcStride &&
-        (uint32_t)width == dstStride) {
-        memcpy(dstAddr, srcAddr, (size_t)width * (size_t)height * 4);
-    } else {
-        for (int y = 0; y < height; y++) {
-            memcpy(dstAddr + (size_t)y * dstStride,
-                   srcAddr + (size_t)y * (uint32_t)srcStride,
-                   (size_t)width * 4);
+    for (int y = 0; y < height; y++) {
+        const uint32_t* s = srcAddr + (size_t)y * (uint32_t)srcStride;
+        uint32_t* d = dstAddr + (size_t)y * dstStride;
+        for (int x = 0; x < width; x++) {
+            uint32_t px = s[x];
+            d[x] = (px & 0xFF00FF00u) | ((px & 0x00FF0000u) >> 16) | ((px & 0x000000FFu) << 16);
         }
     }
 
@@ -265,6 +263,33 @@ Java_com_winlator_renderer_AHBImage_createHardwareBuffer(
          rdesc.layers);
 
     dump_ahb_usage(rdesc.usage);
+    return (jlong)(uintptr_t)ahb;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_winlator_renderer_AHBImage_createScanoutHardwareBuffer(
+        JNIEnv *env, jobject obj, jshort width, jshort height)
+{
+    if (width <= 0 || height <= 0) {
+        LOGE("nativeCreateScanoutHardwareBuffer: invalid dimensions %d x %d", width, height);
+        return 0;
+    }
+
+    AHardwareBuffer_Desc desc;
+    memset(&desc, 0, sizeof(desc));
+    desc.width  = (uint32_t)width;
+    desc.height = (uint32_t)height;
+    desc.layers = 1;
+    desc.format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM;
+    desc.usage  = AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE
+                  | AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN
+                  | AHARDWAREBUFFER_USAGE_COMPOSER_OVERLAY;
+
+    AHardwareBuffer *ahb = NULL;
+    if (AHardwareBuffer_allocate(&desc, &ahb) != 0) {
+        LOGE("nativeCreateScanoutHardwareBuffer: alloc failed (%u x %u)", desc.width, desc.height);
+        return 0;
+    }
     return (jlong)(uintptr_t)ahb;
 }
 

@@ -156,10 +156,12 @@ public class WinHandler {
         }
         controllerManager.scanForDevices();
         InputDevice p1Device = controllerManager.getAssignedDeviceForSlot(0);
+        currentControllerId = -1;
         if (p1Device != null) {
             currentController = ExternalController.getController(p1Device.getId());
             if (currentController != null) {
                 currentController.setContext(activity);
+                currentControllerId = p1Device.getId();
                 Log.i(TAG, "Initialized Player 1 with: " + p1Device.getName());
             }
         }
@@ -519,6 +521,7 @@ public class WinHandler {
                 final boolean enabled3 = externalController2 != null || useVirtualGamepad2;
                 if (externalController2 != null && externalController2.getDeviceId() != gamepadId) {
                     this.currentController = null;
+                    this.currentControllerId = -1;
                 }
                 addAction(() -> {
                     sendData.rewind();
@@ -537,6 +540,7 @@ public class WinHandler {
                 return;
             case RequestCodes.RELEASE_GAMEPAD:
                 this.currentController = null;
+                this.currentControllerId = -1;
                 this.gamepadClients.clear();
                 this.xinputProcesses.clear();
                 return;
