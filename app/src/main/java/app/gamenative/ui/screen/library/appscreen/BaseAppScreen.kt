@@ -893,9 +893,6 @@ abstract class BaseAppScreen {
         val isInstalled = isInstalled(context, libraryItem)
         val menuOptions = mutableListOf<AppMenuOption>()
 
-        val isGamenativeWrapper = runCatching { loadContainerData(context, libraryItem).graphicsDriver }
-            .getOrNull()?.equals("wrapper-gamenative", ignoreCase = true) == true
-
         // Always available: Edit Container
         menuOptions.add(getEditContainerOption(context, libraryItem, onEditContainer))
 
@@ -903,10 +900,8 @@ abstract class BaseAppScreen {
             // Options only available when game is installed
             getRunContainerOption(context, libraryItem, onClickPlay)?.let { menuOptions.add(it) }
             getTestGraphicsOption(context, libraryItem, onTestGraphics)?.let { menuOptions.add(it) }
-            if (isGamenativeWrapper) {
-                getPlayWithDiagnosticsOption(context, libraryItem, onPlayWithDiagnostics)?.let { menuOptions.add(it) }
-                getShareDiagnosticsOption(context, libraryItem)?.let { menuOptions.add(it) }
-            }
+            getPlayWithDiagnosticsOption(context, libraryItem, onPlayWithDiagnostics)?.let { menuOptions.add(it) }
+            getShareDiagnosticsOption(context, libraryItem)?.let { menuOptions.add(it) }
             getResetContainerOption(context, libraryItem)?.let { menuOptions.add(it) }
             getCreateShortcutOption(context, libraryItem)?.let { menuOptions.add(it) }
             getExportContainerOption(context, libraryItem, exportFrontendLauncher)?.let { menuOptions.add(it) }
