@@ -19,9 +19,8 @@ import java.util.concurrent.TimeUnit;
 public final class RootPerformanceHelper {
     private static final String TAG = "RootPerformanceHelper";
     private static final long LAUNCH_OPTIMIZATION_WINDOW_MS = 30000;
-    private static final long LAUNCH_OPTIMIZATION_INTERVAL_MS = 1000;
-    private static final long SESSION_OPTIMIZATION_INTERVAL_MS = 5000;
-    private static final long REAPPLY_OPTIMIZATION_INTERVAL_MS = 10000;
+    private static final long LAUNCH_OPTIMIZATION_INTERVAL_MS = 2000;
+    private static final long SESSION_OPTIMIZATION_INTERVAL_MS = 10000;
     private static final long ROOT_AVAILABILITY_CACHE_MS = 60000;
     private static final int EMPTY_RUNTIME_GRACE_CYCLES = 6;
     private static volatile Boolean cachedRootAvailable = null;
@@ -257,6 +256,9 @@ public final class RootPerformanceHelper {
                 emptyRuntimeCycles = 0;
             }
             for (int pid : pids) {
+                // Apply optimizations only once per PID: cgroup, affinity, and oom_score_adj are
+                // sticky kernel-level settings that persist until the process exits. Re-applying
+                // them every 10s via su shells was causing thermal pressure on GPU-heavy games.
                 if (optimizedPids.add(pid)) {
                     applyOptimizations(pid, gameAffinityMask, serverAffinityMask, helperAffinityMask, audioAffinityMask, executablePath, profile);
                 }
@@ -434,7 +436,9 @@ public final class RootPerformanceHelper {
             command.append("[ -d \"$base\" ] || return 1; ");
             command.append("[ -d \"$group\" ] || mkdir \"$group\" 2>/dev/null; ");
             command.append("[ -d \"$group\" ] || return 1; ");
-            command.append("[ -w \"$group/cpu.uclamp.min\" ] && echo 70 > \"$group/cpu.uclamp.min\" 2>/dev/null; ");
+            // uclamp.min=50 (not 70): keeps CPU responsive without forcing high freq that causes
+            // thermal pressure on GPU-bound games like Kena UE5 (GPU was hitting 105C throttling).
+            command.append("[ -w \"$group/cpu.uclamp.min\" ] && echo 50 > \"$group/cpu.uclamp.min\" 2>/dev/null; ");
             command.append("[ -w \"$group/cpu.uclamp.max\" ] && echo 100 > \"$group/cpu.uclamp.max\" 2>/dev/null; ");
             command.append("[ -w \"$group/cpu.uclamp.latency_sensitive\" ] && echo 1 > \"$group/cpu.uclamp.latency_sensitive\" 2>/dev/null; ");
             command.append("move_member \"$group\" \"$p\"; return 0; ");
@@ -451,11 +455,11 @@ public final class RootPerformanceHelper {
         }
         command.append("if [ -w \"/proc/$p/oom_score_adj\" ]; then echo -800 > \"/proc/$p/oom_score_adj\" 2>&1; fi; ");
         command.append("}; ");
+        // Apply only to the main process (not all threads). cgroup membership is inherited by
+        // all threads automatically. Applying taskset/renice to each thread individually was
+        // generating hundreds of su shell invocations per UE5 game process, causing CPU spikes
+        // and thermal throttling on GPU-heavy titles.
         command.append("opt_pid ").append(pid).append("; ");
-        command.append("[ -d /proc/").append(pid).append(" ] || exit 0; ");
-        command.append("for t in /proc/").append(pid).append("/task/*; do ");
-        command.append("[ -d \"$t\" ] || continue; tid=\"${t##*/}\"; opt_pid \"$tid\"; ");
-        command.append("done");
 
         CommandResult result = runSuCommand(command.toString(), 5000);
         if (result.isSuccess()) {
