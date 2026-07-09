@@ -46,9 +46,9 @@ object BionicSteamAssetsDependency : LaunchDependency {
     private val LSTEAMCLIENT_ARCHIVE_BY_WINE = mapOf(
         "proton-9.0-x86_64" to "lsteamclient-x86_64-proton9.tzst",
         "proton-9.0-arm64ec" to "lsteamclient-arm64ec-proton9.tzst",
-        "proton-10.0-4-x86_64-1" to "lsteamclient-x86_64.tzst",
-        "proton-10.0-arm64ec-2" to "lsteamclient-arm64ec.tzst",
-        "proton-10.0-4-arm64ec-1" to "lsteamclient-arm64ec.tzst",
+        "proton-10.0-4-x86_64-1" to "lsteamclient-x86_64-proton10.tzst",
+        "proton-10.0-arm64ec-2" to "lsteamclient-arm64ec-proton10.tzst",
+        "proton-10.0-4-arm64ec-1" to "lsteamclient-arm64ec-proton10.tzst",
         "proton-11.0-1-x86_64-1" to "lsteamclient-x86_64-proton11.tzst",
         "proton-11.0-1-arm64ec-1" to "lsteamclient-arm64ec-proton11.tzst",
     )
@@ -69,8 +69,19 @@ object BionicSteamAssetsDependency : LaunchDependency {
     /** All steam.exe cache names we may have installed, for bionic-vs-real detection. */
     fun bionicSteamExeNames(): List<String> = listOf(STEAM_EXE, STEAM_EXE_PROTON11)
 
-    private fun lsteamclientArchiveFor(container: Container): String? =
-        LSTEAMCLIENT_ARCHIVE_BY_WINE[container.wineVersion]
+    private fun lsteamclientArchiveFor(container: Container): String? {
+        val wineVersion = container.wineVersion
+        LSTEAMCLIENT_ARCHIVE_BY_WINE[wineVersion]?.let { return it }
+        val major = Regex("^proton-(\\d+)").find(wineVersion)?.groupValues?.get(1)?.toIntOrNull()
+            ?: return null
+        val arch = if (wineVersion.contains("arm64ec")) "arm64ec" else "x86_64"
+        val proton = when {
+            major <= 9 -> "proton9"
+            major == 10 -> "proton10"
+            else -> "proton11"
+        }
+        return "lsteamclient-$arch-$proton.tzst"
+    }
 
     private fun system32SrcArchDir(container: Container): String =
         if (container.wineVersion.contains("arm64ec")) "aarch64-windows" else "x86_64-windows"
@@ -129,7 +140,6 @@ object BionicSteamAssetsDependency : LaunchDependency {
         }
         val libDir = wineLibDir(context, container)
         libDir.mkdirs()
-        Timber.i("Extracting $archive into ${libDir.absolutePath}")
         if (!TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, archiveCache, libDir)) {
             Timber.e("Failed to extract $archive into ${libDir.absolutePath}")
             return
