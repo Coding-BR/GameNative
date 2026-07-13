@@ -633,9 +633,6 @@ class PerformanceHudView(
         }
 
         val fallback = readCpuUsagePercentFromFrequency()
-        if (fallback != null) {
-            Timber.d("[HUD] CPU usage: %d%% from cpufreq ratio", fallback)
-        }
         return fallback
     }
 
@@ -666,10 +663,6 @@ class PerformanceHudView(
             .asSequence()
             .mapNotNull { readGpuUsageSample(it) }
             .firstOrNull()
-
-        if (reading != null) {
-            Timber.d("[HUD] GPU usage: %d%% from %s", reading.percent, reading.source)
-        }
 
         return reading?.percent
     }
@@ -798,9 +791,6 @@ class PerformanceHudView(
         val reading = readTemperatureCWithSource(
             discoverPrioritizedCpuTempPaths()
         )
-        if (reading != null) {
-            Timber.d("[HUD] CPU temp: %d°C from %s", reading.celsius, reading.source)
-        }
         return reading?.celsius
     }
 
@@ -813,9 +803,6 @@ class PerformanceHudView(
                 "/sys/kernel/gpu/temp",
             ) + discoverPrioritizedGpuTempPaths(),
         )
-        if (reading != null) {
-            Timber.d("[HUD] GPU temp: %d°C from %s", reading.celsius, reading.source)
-        }
         return reading?.celsius
     }
 
@@ -918,15 +905,6 @@ class PerformanceHudView(
         thermalZonesCache = zones
         if (!thermalZoneDiscoveryLogged) {
             thermalZoneDiscoveryLogged = true
-            Timber.v(
-                "[HUD] Discovered %d thermal zones: %s",
-                zones.size,
-                zones.joinToString(", ") { (type, path) ->
-                    val zoneDir = path.substringBeforeLast("/")
-                    val zoneId = zoneDir.substringAfterLast("/")
-                    "$zoneId=$type"
-                },
-            )
         }
 
         return zones
