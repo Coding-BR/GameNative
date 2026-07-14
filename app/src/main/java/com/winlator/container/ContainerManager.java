@@ -35,16 +35,6 @@ public class ContainerManager {
 
     public ContainerManager(Context context) {
         this.context = context;
-        // Override default driver and DXVK version based on Turnip capability
-        if (GPUInformation.isTurnipCapable(context)) {
-            Container.DEFAULT_GRAPHICS_DRIVER = "turnip";
-            DefaultVersion.DXVK = "2.6.1-gplasync";
-            Log.d("ContainerManager", "Setting default graphics to turnip and dxvk version to 2.6.1-gplasync");
-        } else {
-            Container.DEFAULT_GRAPHICS_DRIVER = "vortek";
-            DefaultVersion.DXVK = "1.10.9-sarek";
-            Log.d("ContainerManager", "Setting default graphics to vortek and dxvk version to 1.10.3");
-        }
         File rootDir = ImageFs.find(context).getRootDir();
         homeDir = new File(rootDir, "home");
         loadContainers();

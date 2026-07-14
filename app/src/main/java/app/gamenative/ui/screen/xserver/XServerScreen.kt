@@ -259,15 +259,10 @@ private fun detectMaxRefreshRateHz(context: Context, attachedView: View?): Int {
         ?: DEFAULT_FPS_LIMITER_MAX_HZ
 }
 
-// Guard to prevent duplicate game_exited events when multiple exit triggers fire simultaneously
-private val isExiting = AtomicBoolean(false)
 
-private const val EXIT_PROCESS_TIMEOUT_MS = 30_000L
-private const val EXIT_PROCESS_POLL_INTERVAL_MS = 1_000L
-private const val EXIT_PROCESS_RESPONSE_TIMEOUT_MS = 2_000L
 
 private data class XServerViewReleaseBinding(
-    val xServerView: XServerView,
+    val xServerView: XServerRendererView,
     val windowModificationListener: WindowManager.OnWindowModificationListener,
 )
 
@@ -3147,6 +3142,7 @@ private fun setupXEnvironment(
     bootToContainer: Boolean,
     testGraphics: Boolean,
     diagnostics: Boolean,
+    xServerState: MutableState<XServerState>,
     envVars: EnvVars,
     container: Container?,
     appLaunchInfo: LaunchInfo?,
@@ -4401,7 +4397,6 @@ private fun unpackExecutableFile(
             }
         } else {
             Timber.i("Skipping Steamless (launchRealSteam=${container.isLaunchRealSteam}, launchBionicSteam=${container.isLaunchBionicSteam}, useLegacyDRM=${container.isUseLegacyDRM}, unpackFiles=${container.isUnpackFiles})")
-        }
         }
 
         output = StringBuilder()

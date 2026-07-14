@@ -4,6 +4,7 @@ import static com.winlator.xserver.XClientRequestHandler.RESPONSE_CODE_SUCCESS;
 
 import android.os.Process;
 import android.util.SparseArray;
+import java.io.IOException;
 
 import com.winlator.renderer.ASurfaceRenderer;
 import com.winlator.renderer.GPUImage;
