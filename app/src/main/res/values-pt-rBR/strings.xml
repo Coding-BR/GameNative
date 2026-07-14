@@ -1355,7 +1355,7 @@
     <string name="review_mostly_negative">Majoritariamente negativo</string>
     <string name="review_overwhelmingly_negative">Extremamente negativo</string>
     <string name="settings_interface_show_recommendations_title">Mostrar recomendações de jogos</string>
-    <string name="settings_interface_show_recommendations_subtitle">Mostra jogos indie selecionados na sua biblioteca. Manter ativado ajuda a apoiar desenvolvedores indie e o GameNative.</string>
+    <string name="settings_interface_show_recommendations_subtitle">Mostra recomendações personalizadas. Manter isso ativado ajuda a apoiar o GameNative.</string>
      <string name="steam_save_export_success">Saves exportados</string>
      <string name="steam_save_export_no_saves_found">Nenhum save encontrado</string>
      <string name="steam_save_export_failed">Falha ao exportar saves: %s</string>
@@ -1923,4 +1923,29 @@
     <string name="toast_no_buttons_to_copy_appearance">Nenhum outro controle disponível para copiar aparência</string>
     <string name="toast_copied_button_appearance">Aparência do controle copiada</string>
     <string name="toast_applied_button_appearance">Aparência aplicada a todos os controles</string>
+    <string name="rec_disclosure_title">Recomendações de jogos</string>
+    <string name="rec_disclosure_body">Para recomendações personalizadas, compartilhamos os jogos que você joga com a GOG. Desative quando quiser nas Configurações.</string>
+    <string name="rec_disclosure_allow">Permitir</string>
+    <string name="rec_disclosure_not_now">Agora não</string>
+
+    <!-- Sponsorship (featured slot) -->
+    <string name="featured_badge">Patrocinado</string>
+    <string name="featured_action_wishlist">Lista de desejos</string>
+    <string name="featured_action_wishlist_on">Adicionar à lista na %1$s</string>
+    <string name="featured_action_preorder">Reservar</string>
+    <string name="featured_action_preorder_on">Reservar na %1$s</string>
+    <string name="featured_action_buy">Comprar</string>
+    <string name="featured_action_buy_on">Comprar na %1$s</string>
+    <string name="featured_action_notify">Avise-me</string>
+    <string name="featured_action_visit">Saiba mais</string>
+    <string name="featured_status_coming_soon_title">Em breve</string>
+    <string name="featured_status_coming_soon_body">Adicione à lista de desejos para ser avisado no lançamento</string>
+    <string name="featured_status_early_access_title">Acesso antecipado</string>
+    <string name="featured_status_early_access_body">Disponível agora em acesso antecipado</string>
+    <string name="featured_status_preorder_title">Reserve agora</string>
+    <string name="featured_status_preorder_body">Reserve para estar pronto no lançamento</string>
+    <string name="featured_status_out_now_title">Já disponível</string>
+    <string name="featured_status_out_now_body">Disponível agora</string>
+    <string name="tab_recommended">Recomendados</string>
+    <string name="gog_rec_empty">Adicione ou jogue alguns jogos para receber recomendações da GOG com base na sua biblioteca.</string>
 </resources>

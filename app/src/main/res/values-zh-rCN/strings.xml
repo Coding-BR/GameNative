@@ -1454,7 +1454,7 @@
     <string name="review_mostly_negative">多半差评</string>
     <string name="review_overwhelmingly_negative">差评如潮</string>
     <string name="settings_interface_show_recommendations_title">显示游戏推荐</string>
-    <string name="settings_interface_show_recommendations_subtitle">在游戏库中显示精选独立游戏。保持开启有助于支持独立开发者和 GameNative。</string>
+    <string name="settings_interface_show_recommendations_subtitle">显示个性化推荐。保持开启有助于支持 GameNative。</string>
      <string name="steam_save_export_success">存档已导出</string>
      <string name="steam_save_export_no_saves_found">未找到存档文件</string>
      <string name="steam_save_export_failed">导出存档失败：%s</string>
@@ -2071,4 +2071,29 @@
     <string name="toast_no_buttons_to_copy_appearance">没有其他可复制外观的控件</string>
     <string name="toast_copied_button_appearance">已复制控件外观</string>
     <string name="toast_applied_button_appearance">已将外观应用到所有控件</string>
+    <string name="rec_disclosure_title">游戏推荐</string>
+    <string name="rec_disclosure_body">为提供个性化推荐，我们会将你玩过的游戏分享给 GOG。可随时在设置中关闭。</string>
+    <string name="rec_disclosure_allow">允许</string>
+    <string name="rec_disclosure_not_now">暂不</string>
+
+    <!-- Sponsorship (featured slot) -->
+    <string name="featured_badge">赞助</string>
+    <string name="featured_action_wishlist">愿望单</string>
+    <string name="featured_action_wishlist_on">在 %1$s 加入愿望单</string>
+    <string name="featured_action_preorder">预购</string>
+    <string name="featured_action_preorder_on">在 %1$s 预购</string>
+    <string name="featured_action_buy">购买</string>
+    <string name="featured_action_buy_on">在 %1$s 购买</string>
+    <string name="featured_action_notify">提醒我</string>
+    <string name="featured_action_visit">了解更多</string>
+    <string name="featured_status_coming_soon_title">即将推出</string>
+    <string name="featured_status_coming_soon_body">立即加入愿望单，发售时第一时间收到通知</string>
+    <string name="featured_status_early_access_title">抢先体验</string>
+    <string name="featured_status_early_access_body">抢先体验现已推出</string>
+    <string name="featured_status_preorder_title">立即预购</string>
+    <string name="featured_status_preorder_body">预购以在发售时做好准备</string>
+    <string name="featured_status_out_now_title">现已推出</string>
+    <string name="featured_status_out_now_body">现在可用</string>
+    <string name="tab_recommended">推荐</string>
+    <string name="gog_rec_empty">添加或试玩一些游戏，即可根据你的游戏库获得 GOG 推荐。</string>
 </resources>

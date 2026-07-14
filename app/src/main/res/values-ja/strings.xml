@@ -1536,7 +1536,7 @@
     <string name="lsfg_installing">Lossless Scaling をダウンロード中…</string>
     <string name="lsfg_performance_mode_desc">スループットを上げるために品質を下げる</string>
     <string name="settings_interface_show_recommendations_title">ゲームのおすすめを表示</string>
-    <string name="settings_interface_show_recommendations_subtitle">厳選されたインディー ゲームのおすすめをライブラリに表示します。これをオンにしておくと、インディー開発者と GameNative のサポートに役立ちます。</string>
+    <string name="settings_interface_show_recommendations_subtitle">パーソナライズされたおすすめを表示します。オンのままにすると GameNative の支援につながります。</string>
     <!-- Game Launch Tips -->
     <string name="game_launch_tip_1">初回起動時は起動に数分かかる場合があります</string>
     <string name="game_launch_tip_2">ヒント: ゲーム設定で \"%s\" を押すと、ゲーム ファイルを表示できます。</string>
@@ -2010,4 +2010,29 @@
     <string name="toast_no_buttons_to_copy_appearance">外観をコピーできる他のコントロールがありません</string>
     <string name="toast_copied_button_appearance">コントロールの外観をコピーしました</string>
     <string name="toast_applied_button_appearance">すべてのコントロールに外観を適用しました</string>
+    <string name="rec_disclosure_title">ゲームのおすすめ</string>
+    <string name="rec_disclosure_body">パーソナライズされたおすすめのため、プレイしたゲームを GOG と共有します。設定でいつでもオフにできます。</string>
+    <string name="rec_disclosure_allow">許可</string>
+    <string name="rec_disclosure_not_now">後で</string>
+
+    <!-- Sponsorship (featured slot) -->
+    <string name="featured_badge">スポンサー</string>
+    <string name="featured_action_wishlist">ウィッシュリスト</string>
+    <string name="featured_action_wishlist_on">%1$s でウィッシュリストに追加</string>
+    <string name="featured_action_preorder">予約購入</string>
+    <string name="featured_action_preorder_on">%1$s で予約購入</string>
+    <string name="featured_action_buy">購入</string>
+    <string name="featured_action_buy_on">%1$s で購入</string>
+    <string name="featured_action_notify">通知を受け取る</string>
+    <string name="featured_action_visit">詳細を見る</string>
+    <string name="featured_status_coming_soon_title">近日公開</string>
+    <string name="featured_status_coming_soon_body">ウィッシュリストに追加すると、リリース時に通知されます</string>
+    <string name="featured_status_early_access_title">早期アクセス</string>
+    <string name="featured_status_early_access_body">早期アクセスで配信中</string>
+    <string name="featured_status_preorder_title">今すぐ予約購入</string>
+    <string name="featured_status_preorder_body">予約購入してリリースに備えよう</string>
+    <string name="featured_status_out_now_title">配信中</string>
+    <string name="featured_status_out_now_body">現在利用可能</string>
+    <string name="tab_recommended">おすすめ</string>
+    <string name="gog_rec_empty">ゲームを追加またはプレイすると、ライブラリに基づいたGOGのおすすめが表示されます。</string>
 </resources>

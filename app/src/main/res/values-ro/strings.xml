@@ -1486,7 +1486,7 @@
     <string name="review_mostly_negative">Majoritar negativ</string>
     <string name="review_overwhelmingly_negative">Copleșitor de negativ</string>
     <string name="settings_interface_show_recommendations_title">Afișează recomandări de jocuri</string>
-    <string name="settings_interface_show_recommendations_subtitle">Afișează jocuri indie selectate în biblioteca ta. Păstrând această opțiune activată, sprijini dezvoltatorii indie și GameNative.</string>
+    <string name="settings_interface_show_recommendations_subtitle">Afișează recomandări personalizate. Menținerea activă ajută la susținerea GameNative.</string>
      <string name="steam_save_export_success">Salvari exportate</string>
      <string name="steam_save_export_no_saves_found">Nu s-au găsit fișiere de salvare</string>
      <string name="steam_save_export_failed">Exportul salvărilor a eșuat: %s</string>
@@ -2054,4 +2054,29 @@
     <string name="toast_no_buttons_to_copy_appearance">Nu există alte controale de la care să copiezi aspectul</string>
     <string name="toast_copied_button_appearance">Aspectul controlului a fost copiat</string>
     <string name="toast_applied_button_appearance">Aspectul a fost aplicat tuturor controalelor</string>
+    <string name="rec_disclosure_title">Recomandări de jocuri</string>
+    <string name="rec_disclosure_body">Pentru recomandări personalizate, partajăm jocurile pe care le joci cu GOG. Poți dezactiva oricând din Setări.</string>
+    <string name="rec_disclosure_allow">Permite</string>
+    <string name="rec_disclosure_not_now">Nu acum</string>
+
+    <!-- Sponsorship (featured slot) -->
+    <string name="featured_badge">Sponsorizat</string>
+    <string name="featured_action_wishlist">Listă de dorințe</string>
+    <string name="featured_action_wishlist_on">Adaugă în listă pe %1$s</string>
+    <string name="featured_action_preorder">Precomandă</string>
+    <string name="featured_action_preorder_on">Precomandă pe %1$s</string>
+    <string name="featured_action_buy">Cumpără</string>
+    <string name="featured_action_buy_on">Cumpără pe %1$s</string>
+    <string name="featured_action_notify">Anunță-mă</string>
+    <string name="featured_action_visit">Află mai multe</string>
+    <string name="featured_status_coming_soon_title">În curând</string>
+    <string name="featured_status_coming_soon_body">Adaugă în lista de dorințe ca să fii anunțat la lansare</string>
+    <string name="featured_status_early_access_title">Acces timpuriu</string>
+    <string name="featured_status_early_access_body">Disponibil acum în acces timpuriu</string>
+    <string name="featured_status_preorder_title">Precomandă acum</string>
+    <string name="featured_status_preorder_body">Precomandă ca să fii pregătit la lansare</string>
+    <string name="featured_status_out_now_title">Disponibil acum</string>
+    <string name="featured_status_out_now_body">Acum disponibil</string>
+    <string name="tab_recommended">Recomandate</string>
+    <string name="gog_rec_empty">Adaugă sau joacă câteva jocuri pentru a primi recomandări GOG pe baza bibliotecii tale.</string>
 </resources>
