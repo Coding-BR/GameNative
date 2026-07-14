@@ -983,9 +983,9 @@
     <string name="processor_affinity_32bit">Processor Affinity (32-bit apps)</string>
     <string name="cpu_affinity_preset">CPU Affinity Preset</string>
     <string name="cpu_preset_default">Default (All Cores)</string>
-    <string name="cpu_preset_sd8gen2">Snapdragon 8 Gen 2 (Big Cores: 3-6)</string>
-    <string name="cpu_preset_sd8gen3">Snapdragon 8 Gen 3 (Big Cores: 2-6)</string>
-    <string name="cpu_preset_sd8elite">Snapdragon 8 Elite (Medium Cores: 0-5)</string>
+    <string name="cpu_preset_sd8gen2">Snapdragon 8 Gen 2 (Big/Prime Cores: 3-7)</string>
+    <string name="cpu_preset_sd8gen3">Snapdragon 8 Gen 3 (Big/Prime Cores: 2-7)</string>
+    <string name="cpu_preset_sd8elite">Snapdragon 8 Elite (All Cores: 0-7)</string>
     <string name="cpu_preset_custom">Custom (Manual Select)</string>
     <string name="executable_path">Executable Path</string>
     <string name="executable_path_placeholder">e.g., path\\to\\exe</string>

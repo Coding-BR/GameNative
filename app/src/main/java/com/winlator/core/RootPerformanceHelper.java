@@ -343,6 +343,7 @@ public final class RootPerformanceHelper {
     private static boolean isInstallerOrLauncherWorkload(String value) {
         if (value == null || value.isEmpty()) return false;
         String lower = value.replace('\\', '/').toLowerCase();
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return false;
         return lower.contains("/installers/")
                 || lower.contains("installer")
                 || lower.contains("setup")
@@ -387,6 +388,7 @@ public final class RootPerformanceHelper {
     private static boolean isHelperOrLauncher(String cmdline) {
         if (cmdline == null || cmdline.isEmpty()) return true;
         String lower = cmdline.toLowerCase().replace('\\', '/');
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return false;
 
         if (lower.contains("/installers/")
                 || lower.contains("installer")
@@ -502,12 +504,16 @@ public final class RootPerformanceHelper {
     }
 
     private static boolean isMainGameProcess(String cmdline, String executablePath) {
-        if (executablePath == null || executablePath.isEmpty() || cmdline == null || cmdline.isEmpty()) return false;
+        if (cmdline == null || cmdline.isEmpty()) return false;
+        String lowerCmdline = cmdline.toLowerCase();
+        if (lowerCmdline.contains("gta5.exe") || lowerCmdline.contains("gtav.exe")) return true;
+
+        if (executablePath == null || executablePath.isEmpty()) return false;
         String executable = executablePath.replace('\\', '/');
         int slash = executable.lastIndexOf('/');
         if (slash >= 0) executable = executable.substring(slash + 1);
         if (executable.isEmpty()) return false;
-        return cmdline.toLowerCase().contains(executable.toLowerCase());
+        return lowerCmdline.contains(executable.toLowerCase());
     }
 
     private static void applySystemPerformanceProfile(int mainPid, Profile profile) {
