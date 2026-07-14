@@ -503,6 +503,20 @@ abstract class BaseAppScreen {
     }
 
     @Composable
+    protected open fun getTestGraphicsOption(
+        context: Context,
+        libraryItem: LibraryItem,
+        onTestGraphics: () -> Unit
+    ): AppMenuOption? {
+        return AppMenuOption(
+            AppOptionMenuType.TestGraphics,
+            onClick = {
+                onTestGraphicsClick(context, libraryItem, onTestGraphics)
+            }
+        )
+    }
+
+    @Composable
     protected abstract fun getResetContainerOption(
         context: Context,
         libraryItem: LibraryItem,

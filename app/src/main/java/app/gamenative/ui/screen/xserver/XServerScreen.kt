@@ -259,12 +259,19 @@ private fun detectMaxRefreshRateHz(context: Context, attachedView: View?): Int {
         ?: DEFAULT_FPS_LIMITER_MAX_HZ
 }
 
+// Guard to prevent duplicate game_exited events when multiple exit triggers fire simultaneously
+private val isExiting = AtomicBoolean(false)
+
+private const val EXIT_PROCESS_TIMEOUT_MS = 30_000L
+private const val EXIT_PROCESS_POLL_INTERVAL_MS = 1_000L
+private const val EXIT_PROCESS_RESPONSE_TIMEOUT_MS = 2_000L
+
 private data class XServerViewReleaseBinding(
-    val xServerView: XServerRendererView,
+    val xServerView: XServerView,
     val windowModificationListener: WindowManager.OnWindowModificationListener,
 )
 
-private val CORE_WINE_PROCESSES = setOf(
+val CORE_WINE_PROCESSES = setOf(
     "wineserver",
     "services",
     "start",
@@ -3140,7 +3147,6 @@ private fun setupXEnvironment(
     bootToContainer: Boolean,
     testGraphics: Boolean,
     diagnostics: Boolean,
-    xServerState: MutableState<XServerState>,
     envVars: EnvVars,
     container: Container?,
     appLaunchInfo: LaunchInfo?,
@@ -4048,6 +4054,17 @@ private fun getSteamlessTarget(
     return "$drive:\\${executablePath}"
 }
 
+private fun filterExecutablesForSteamless(executables: List<String>): List<String> {
+    return executables.filter { exePath ->
+        val lowerPath = exePath.lowercase()
+        // Exclude _CommonRedist folder
+        !lowerPath.contains("_commonredist") &&
+        // Exclude files ending in original.exe or unpacked.exe
+        !lowerPath.endsWith("original.exe") &&
+        !lowerPath.endsWith("unpacked.exe")
+    }
+}
+
 private fun exit(
     winHandler: WinHandler?,
     frameRating: FrameRating?,
@@ -4384,6 +4401,7 @@ private fun unpackExecutableFile(
             }
         } else {
             Timber.i("Skipping Steamless (launchRealSteam=${container.isLaunchRealSteam}, launchBionicSteam=${container.isLaunchBionicSteam}, useLegacyDRM=${container.isUseLegacyDRM}, unpackFiles=${container.isUnpackFiles})")
+        }
         }
 
         output = StringBuilder()

@@ -1038,9 +1038,10 @@ object ContainerUtils {
             createNewContainer(context, appId, appId, containerManager)
         }
 
-        // Ensure Custom Games have the A: drive mapped to the game folder
-        // and GOG games have a drive mapped to the GOG games directory
-        // and Epic games have a drive mapped to the Epic game directory
+        // Delete any existing FEXCore config files (we use environment variables only)
+        FEXCoreManager.deleteConfigFiles(context, container.id)
+
+        // Ensure all games have the A: drive mapped to the game folder
         val gameSource = extractGameSourceFromContainerId(appId)
         val gameFolderPath: String? = when (gameSource) {
             GameSource.STEAM -> {
@@ -1066,10 +1067,37 @@ object ContainerUtils {
                 val appIdInt = runCatching { extractGameIdFromContainerId(appId) }.getOrNull()
                 if (appIdInt != null) AmazonService.getInstallPathByAppId(appIdInt) else null
             }
+            else -> null
         }
 
         if (gameFolderPath != null) {
             // Check if A: drive is already mapped to the correct path
+            var hasCorrectADrive = false
+            for (drive in Container.drivesIterator(container.drives)) {
+                if (drive[0] == "A" && drive[1] == gameFolderPath) {
+                    hasCorrectADrive = true
+                    break
+                }
+            }
+
+            // If A: drive is not mapped correctly, update it
+            if (!hasCorrectADrive) {
+                val currentDrives = container.drives
+                // Rebuild drives string, excluding existing A: drive and adding new one
+                val drivesBuilder = StringBuilder()
+                drivesBuilder.append("A:$gameFolderPath")
+
+                // Add all other drives (excluding A:)
+                for (drive in Container.drivesIterator(currentDrives)) {
+                    if (drive[0] != "A") {
+                        drivesBuilder.append("${drive[0]}:${drive[1]}")
+                    }
+                }
+
+                val updatedDrives = drivesBuilder.toString()
+                container.drives = updatedDrives
+                container.saveData()
+                Timber.d("Updated container drives to include A: drive mapping: $updatedDrives")
             var hasCorrectADrive = false
             for (drive in Container.drivesIterator(container.drives)) {
                 if (drive[0] == "A" && drive[1] == gameFolderPath) {
@@ -1261,7 +1289,6 @@ object ContainerUtils {
             }
         } ?: "Unknown"
     }
-
     /**
      * Gets the file system path for the container's A: drive
      */
@@ -1301,8 +1328,6 @@ object ContainerUtils {
             Timber.d("Found ${executables.size} executables in A: drive")
         } catch (e: Exception) {
             Timber.e(e, "Error scanning A: drive for executables")
-        }
-
         return executables
     }
 
@@ -1325,11 +1350,9 @@ object ContainerUtils {
         return when {
             // Highest priority: common game executable patterns
             fileName.contains("game") -> 100
-
             fileName.contains("start") -> 85
 
             fileName.contains("main") -> 80
-
             fileName.contains("launcher") && !fileName.contains("unins") -> 75
 
             // High priority: probable main executables
