@@ -328,6 +328,7 @@ public final class RootPerformanceHelper {
 
     private static boolean isTargetProcess(String name, String cmdline) {
         String lower = ((name == null ? "" : name) + " " + (cmdline == null ? "" : cmdline)).toLowerCase();
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return true;
         if (isInstallerOrLauncherWorkload(lower)) return false;
         return lower.contains("wine")
                 || lower.contains("wineserver")
