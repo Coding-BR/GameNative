@@ -18,7 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +90,7 @@ import app.gamenative.ui.screen.login.UserLoginScreen
 import app.gamenative.ui.screen.settings.SettingsScreen
 import app.gamenative.ui.screen.xserver.XServerScreen
 import app.gamenative.ui.theme.PluviaTheme
+import app.gamenative.ui.util.LocalSnackbarHostController
 import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.utils.BestConfigService
 import app.gamenative.utils.ContainerUtils
@@ -129,9 +129,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 private const val PENDING_LAUNCH_TIMEOUT_MS = 10_000L
+private const val SNACKBAR_SHOW_TIMEOUT_MS = 15_000L
 
 /** Used to suspend preLaunchApp while the user decides on large workshop updates. */
 private var workshopUpdateDeferred: CompletableDeferred<Boolean>? = null
@@ -1107,12 +1109,18 @@ fun PluviaMain(
         }
     }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarController = LocalSnackbarHostController.current
     var exitSnackbarVisible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(snackbarController) {
         SnackbarManager.messages.collect { message ->
-            snackbarHostState.showSnackbar(message)
+            if (
+                withTimeoutOrNull(SNACKBAR_SHOW_TIMEOUT_MS) {
+                    snackbarController.hostState.showSnackbar(message)
+                } == null
+            ) {
+                Timber.w("[Snackbar]: Display timed out before dismissal")
+            }
             // snackbar dismissed (timeout or new message) — reset exit flag
             exitSnackbarVisible = false
         }
@@ -1448,6 +1456,7 @@ fun PluviaMain(
                             )
                         },
                         isOffline = isOffline,
+                        isSteamConnected = state.isSteamConnected,
                     )
                 }
 
@@ -1526,28 +1535,30 @@ fun PluviaMain(
                 }
             }
 
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                    .padding(bottom = 16.dp),
-            ) { data ->
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.BottomCenter,
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shadowElevation = 4.dp,
+            if (snackbarController.rootOwnsHost) {
+                SnackbarHost(
+                    hostState = snackbarController.hostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+                        .padding(bottom = 16.dp),
+                ) { data ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.BottomCenter,
                     ) {
-                        Text(
-                            text = data.visuals.message,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shadowElevation = 4.dp,
+                        ) {
+                            Text(
+                                text = data.visuals.message,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
             }
@@ -1653,28 +1664,27 @@ fun preLaunchApp(
             }
         }
 
-        // download any manifest components (wine/proton, dxvk, etc.) missing from config
-        if (ContainerUtils.supportsKnownConfigAutoApply(gameSource)) {
-            try {
-                val configJson = Json.parseToJsonElement(container.containerJson).jsonObject
-                val missingRequests = BestConfigService.resolveMissingManifestInstallRequests(
-                    context, configJson, "exact_gpu_match",
-                )
-                for (request in missingRequests) {
-                    setLoadingMessage(context.getString(R.string.main_downloading_entry, request.entry.name))
-                    try {
-                        ManifestInstaller.installManifestEntry(
-                            context, request.entry, request.isDriver, request.contentType,
-                        ) { progress -> setLoadingProgress(progress.coerceIn(0f, 1f)) }
-                    } catch (e: Exception) {
-                        Timber.e(e, "Failed to install ${request.entry.name}, continuing")
-                    }
+        // download any manifest components (wine/proton, dxvk, etc.) the container's config
+        // references but that aren't installed yet — all sources, including custom games
+        try {
+            val configJson = Json.parseToJsonElement(container.containerJson).jsonObject
+            val missingRequests = BestConfigService.resolveMissingManifestInstallRequests(
+                context, configJson, "exact_gpu_match",
+            )
+            for (request in missingRequests) {
+                setLoadingMessage(context.getString(R.string.main_downloading_entry, request.entry.name))
+                try {
+                    ManifestInstaller.installManifestEntry(
+                        context, request.entry, request.isDriver, request.contentType,
+                    ) { progress -> setLoadingProgress(progress.coerceIn(0f, 1f)) }
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to install ${request.entry.name}, continuing")
                 }
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to install manifest components")
-                setLoadingDialogVisible(false)
-                return@launch
             }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to install manifest components")
+            setLoadingDialogVisible(false)
+            return@launch
         }
 
         // Check if this is a Custom Game and validate executable selection before installing components

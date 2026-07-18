@@ -84,12 +84,11 @@ jobs:
           yes | "$SDKMANAGER" --install "build-tools;34.0.0"
 
       - name: Build with Gradle
-        run: ./gradlew :app:bundleLegacyRelease :app:bundleModernRelease :app:bundleLegacyXrRelease
+        run: ./gradlew :app:bundleLegacyRelease :app:bundleLegacyXrRelease
 
       - name: Stage bundles
         run: |
           cp app/build/outputs/bundle/legacyRelease/app-legacy-release.aab app-release.aab
-          cp app/build/outputs/bundle/modernRelease/app-modern-release.aab app-modern-release.aab
           cp app/build/outputs/bundle/legacyXrRelease/app-legacyXr-release.aab app-legacy-xr-release.aab
 
       - name: Extract APKs from Bundles
@@ -129,6 +128,7 @@ jobs:
           if [ ! -d "$BUILD_TOOLS_DIR" ]; then
             BUILD_TOOLS_DIR="${ANDROID_SDK_ROOT}/build-tools/34.0.0"
           fi
+<<<<<<< HEAD
           if [ -z "$DEBUG_ALIAS" ] || [ -z "$DEBUG_KEY_PASS" ] || [ -z "$DEBUG_STORE_PASS" ]; then
             echo "Signing secrets are missing; generating temporary CI debug keystore."
             keytool -genkeypair \
@@ -176,6 +176,21 @@ jobs:
                 --out "${apk%.apk}-signed.apk" \
                 "$apk"
             fi
+=======
+          for apk in universal.apk universal-legacy-xr.apk; do
+            "${BUILD_TOOLS_DIR}/apksigner" sign \
+              --lineage app/keystores/prod-debug.lineage \
+              --ks app/keystores/keystore \
+              --ks-key-alias "$DEBUG_ALIAS" \
+              --ks-pass pass:$DEBUG_STORE_PASS \
+              --key-pass pass:$DEBUG_KEY_PASS \
+              --next-signer --ks app/keystores/prod.keystore \
+              --ks-key-alias "$PROD_ALIAS" \
+              --ks-pass pass:$PROD_STORE_PASS \
+              --key-pass pass:$PROD_KEY_PASS \
+              --out "${apk%.apk}-signed.apk" \
+              "$apk"
+>>>>>>> origin/master
             mv "${apk%.apk}-signed.apk" "$apk"
           done
 
@@ -185,7 +200,6 @@ jobs:
           name: universal-apk
           path: |
             universal.apk
-            universal-modern.apk
             universal-legacy-xr.apk
 
   release:
@@ -205,7 +219,6 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           mv universal.apk "gamenative-$TAG.apk"
-          mv universal-modern.apk "gamenative-$TAG-modern.apk"
           mv universal-legacy-xr.apk "gamenative-$TAG-legacy-xr.apk"
 
       - name: Create GitHub Release
@@ -218,12 +231,10 @@ jobs:
           append_body: true
           body: |
             ## Downloads
-            - **`gamenative-${{ github.ref_name }}.apk`** — Standard build (Android 8–14). Recommended for most users.
-            - **`gamenative-${{ github.ref_name }}-modern.apk`** — Play Store build (Android 11+). Built for the latest Android, so **no security warning** about an outdated target. No D drive access and no custom game support; glibc not supported, external storage location moved.
-            - **`gamenative-${{ github.ref_name }}-legacy-xr.apk`** — Quest/VR sideload build. Legacy storage with all-files access and D drive support, forced landscape. Sideload only (not for the store).
+            - **`gamenative-${{ github.ref_name }}.apk`** — Standard build. Recommended for most users.
+            - **`gamenative-${{ github.ref_name }}-legacy-xr.apk`** — XR build for Quest headsets.
           files: |
             gamenative-${{ github.ref_name }}.apk
-            gamenative-${{ github.ref_name }}-modern.apk
             gamenative-${{ github.ref_name }}-legacy-xr.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
