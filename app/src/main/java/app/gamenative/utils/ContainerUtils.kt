@@ -1262,7 +1262,6 @@ object ContainerUtils {
             }
         } ?: "Unknown"
     }
-
     /**
      * Gets the file system path for the container's A: drive
      */
@@ -1303,7 +1302,6 @@ object ContainerUtils {
         } catch (e: Exception) {
             Timber.e(e, "Error scanning A: drive for executables")
         }
-
         return executables
     }
 
@@ -1326,11 +1324,9 @@ object ContainerUtils {
         return when {
             // Highest priority: common game executable patterns
             fileName.contains("game") -> 100
-
             fileName.contains("start") -> 85
 
             fileName.contains("main") -> 80
-
             fileName.contains("launcher") && !fileName.contains("unins") -> 75
 
             // High priority: probable main executables

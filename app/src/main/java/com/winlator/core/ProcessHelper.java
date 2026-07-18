@@ -232,7 +232,6 @@ public abstract class ProcessHelper {
             }, "stdout-drainer");
             stdoutDrainer.setDaemon(true);
             stdoutDrainer.start();
-
             final InputStream stderrStream = process.getErrorStream();
             stderrDrainer = new Thread(() -> {
                 try (BufferedReader r = new BufferedReader(new InputStreamReader(stderrStream))) {
@@ -592,7 +591,7 @@ public abstract class ProcessHelper {
             }
         });
 
-        String procFile = "/cmdline";
+        String procFile = BuildConfig.MODERN_ANDROID ? "/cmdline" : "/stat";
         for (int index = 0; index < allPids.length; index++){
             String data = "";
             try (

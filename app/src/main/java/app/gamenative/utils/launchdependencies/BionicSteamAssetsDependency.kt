@@ -133,7 +133,6 @@ object BionicSteamAssetsDependency : LaunchDependency {
             marker.readText().trim() == BIONIC_STEAM_VERSION &&
             libsteamclientSo(imageFs).exists()
     }
-
     /**
      * Extracts the active Proton's lsteamclient archive (downloaded by [install])
      * into that Proton's install tree, then copies the PE DLLs into the container

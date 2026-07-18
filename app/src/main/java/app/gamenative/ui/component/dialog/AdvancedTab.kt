@@ -38,10 +38,10 @@ fun AdvancedTabContent(state: ContainerConfigState) {
         )
         
         val currentPresetIndex = when {
-            config.cpuList == defaultList -> 0
-            config.cpuList == "3,4,5,6" -> 1
-            config.cpuList == "2,3,4,5,6" -> 2
-            config.cpuList == "0,1,2,3,4,5" -> 3
+            config.cpuList == defaultList && config.cpuListWoW64 == (totalCores / 2 until totalCores).joinToString(",") -> 0
+            config.cpuList == "3,4,5,6,7" && config.cpuListWoW64 == "3,4,5,6" -> 1
+            config.cpuList == "2,3,4,5,6,7" && config.cpuListWoW64 == "2,3,4,5,6" -> 2
+            config.cpuList == "0,1,2,3,4,5,6,7" && config.cpuListWoW64 == "0,1,2,3,4,5" -> 3
             else -> 4
         }
         
@@ -57,16 +57,16 @@ fun AdvancedTabContent(state: ContainerConfigState) {
                         cpuListWoW64 = (totalCores / 2 until totalCores).joinToString(",")
                     )
                     1 -> config.copy(
-                        cpuList = "3,4,5,6",
+                        cpuList = "3,4,5,6,7",
                         cpuListWoW64 = "3,4,5,6"
                     )
                     2 -> config.copy(
-                        cpuList = "2,3,4,5,6",
-                        cpuListWoW64 = "3,4,5,6"
+                        cpuList = "2,3,4,5,6,7",
+                        cpuListWoW64 = "2,3,4,5,6"
                     )
                     3 -> config.copy(
-                        cpuList = "0,1,2,3,4,5",
-                        cpuListWoW64 = "2,3,4,5"
+                        cpuList = "0,1,2,3,4,5,6,7",
+                        cpuListWoW64 = "0,1,2,3,4,5"
                     )
                     else -> config
                 }

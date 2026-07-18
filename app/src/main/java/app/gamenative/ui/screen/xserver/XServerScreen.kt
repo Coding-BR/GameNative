@@ -265,6 +265,8 @@ private fun detectMaxRefreshRateHz(context: Context, attachedView: View?): Int {
         ?: DEFAULT_FPS_LIMITER_MAX_HZ
 }
 
+
+
 private data class XServerViewReleaseBinding(
     val xServerView: XServerRendererView,
     val windowModificationListener: WindowManager.OnWindowModificationListener,
@@ -1919,9 +1921,8 @@ fun XServerScreen(
                 touchMouse = TouchMouse(getxServer())
                 keyboard = Keyboard(getxServer())
                 if (!bootToContainer) {
-                    renderer.setUnviewableWMClasses("explorer.exe")
                     // TODO: make 'force fullscreen' be an option of the app being launched
-                    if (container.executablePath.isNotBlank()) {
+                    if (!testGraphics && container.executablePath.isNotBlank()) {
                         renderer.forceFullscreenWMClass = Paths.get(container.executablePath).name
                     }
                     // Here, Ludashi calls setDriverInfo to use Adrenotools for the compositor
@@ -3652,7 +3653,7 @@ private fun setupXEnvironment(
                 guestProgramLauncherComponent.setSteamAppId(numericAppId.toString())
             }
         }
-        gameExecutable = "wine explorer /desktop=shell," + xServer.screenInfo + " " +
+        gameExecutable = "wine " +
             getWineStartCommand(context, appId, container, bootToContainer, testGraphics, appLaunchInfo, envVars, guestProgramLauncherComponent, gameSource, offline) +
             (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
         preInstallCommands = PreInstallSteps.getPreInstallCommands(
@@ -4413,6 +4414,17 @@ private fun getSteamlessTarget(
         'D'
     }
     return "$drive:\\${executablePath}"
+}
+
+private fun filterExecutablesForSteamless(executables: List<String>): List<String> {
+    return executables.filter { exePath ->
+        val lowerPath = exePath.lowercase()
+        // Exclude _CommonRedist folder
+        !lowerPath.contains("_commonredist") &&
+        // Exclude files ending in original.exe or unpacked.exe
+        !lowerPath.endsWith("original.exe") &&
+        !lowerPath.endsWith("unpacked.exe")
+    }
 }
 
 private fun exit(

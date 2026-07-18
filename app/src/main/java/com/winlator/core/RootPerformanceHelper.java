@@ -161,23 +161,54 @@ public final class RootPerformanceHelper {
         // 1. Game Process: all performance cores
         String gameCpuList = cpuList;
 
-        // 2. Wineserver: big cores if available, fallback to all performance cores
-        Set<Integer> serverCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
-        String serverCpuList = joinInts(serverCores);
+        String serverCpuList;
+        String helperCpuList;
+        String audioCpuList;
 
-        // 3. Helpers/Launchers: first 4 of big performance cores
-        Set<Integer> helperCores = new java.util.LinkedHashSet<>();
-        int count = 0;
-        Set<Integer> sourceCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
-        for (int core : sourceCores) {
-            helperCores.add(core);
-            count++;
-            if (count >= 4) break;
+        // Optimize specifically for Snapdragon 8 Elite Gen 5 (8 performance-class cores, 2 prime, 6 medium)
+        if (allPerfCores.size() == 8 && primeCores.size() == 2 && bigNonPrimeCores.size() == 6) {
+            // Game: all cores (0,1,2,3,4,5,6,7)
+            // Wineserver: prime cores (6,7) + last 2 medium cores (4,5) -> 4,5,6,7
+            Set<Integer> serverCores = new java.util.LinkedHashSet<>();
+            serverCores.add(4);
+            serverCores.add(5);
+            serverCores.addAll(primeCores);
+            serverCpuList = joinInts(serverCores);
+
+            // Helpers: first 4 medium cores -> 0,1,2,3
+            Set<Integer> helperCores = new java.util.LinkedHashSet<>();
+            helperCores.add(0);
+            helperCores.add(1);
+            helperCores.add(2);
+            helperCores.add(3);
+            helperCpuList = joinInts(helperCores);
+
+            // Audio: dedicated first 2 medium cores -> 0,1
+            Set<Integer> audioCores = new java.util.LinkedHashSet<>();
+            audioCores.add(0);
+            audioCores.add(1);
+            audioCpuList = joinInts(audioCores);
+
+            Log.i(TAG, "Root performance: Detected Snapdragon 8 Elite Gen 5 (Oryon 2P+6M). Applying optimized partitioning.");
+        } else {
+            // 2. Wineserver: big cores if available, fallback to all performance cores
+            Set<Integer> serverCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
+            serverCpuList = joinInts(serverCores);
+
+            // 3. Helpers/Launchers: first 4 of big performance cores
+            Set<Integer> helperCores = new java.util.LinkedHashSet<>();
+            int count = 0;
+            Set<Integer> sourceCores = !bigNonPrimeCores.isEmpty() ? bigNonPrimeCores : allPerfCores;
+            for (int core : sourceCores) {
+                helperCores.add(core);
+                count++;
+                if (count >= 4) break;
+            }
+            helperCpuList = joinInts(helperCores);
+
+            // 4. Audio engine: same as helper list (stable, off prime cores)
+            audioCpuList = helperCpuList;
         }
-        String helperCpuList = joinInts(helperCores);
-
-        // 4. Audio engine: same as helper list (stable, off prime cores)
-        String audioCpuList = helperCpuList;
 
         Log.i(TAG, "CPU Affinity partitioning: Game=[" + gameCpuList + "], Wineserver=[" + serverCpuList + "], Helpers=[" + helperCpuList + "], Audio=[" + audioCpuList + "]");
 
@@ -297,6 +328,7 @@ public final class RootPerformanceHelper {
 
     private static boolean isTargetProcess(String name, String cmdline) {
         String lower = ((name == null ? "" : name) + " " + (cmdline == null ? "" : cmdline)).toLowerCase();
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return true;
         if (isInstallerOrLauncherWorkload(lower)) return false;
         return lower.contains("wine")
                 || lower.contains("wineserver")
@@ -312,6 +344,7 @@ public final class RootPerformanceHelper {
     private static boolean isInstallerOrLauncherWorkload(String value) {
         if (value == null || value.isEmpty()) return false;
         String lower = value.replace('\\', '/').toLowerCase();
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return false;
         return lower.contains("/installers/")
                 || lower.contains("installer")
                 || lower.contains("setup")
@@ -356,6 +389,7 @@ public final class RootPerformanceHelper {
     private static boolean isHelperOrLauncher(String cmdline) {
         if (cmdline == null || cmdline.isEmpty()) return true;
         String lower = cmdline.toLowerCase().replace('\\', '/');
+        if (lower.contains("gta5.exe") || lower.contains("gtav.exe")) return false;
 
         if (lower.contains("/installers/")
                 || lower.contains("installer")
@@ -471,12 +505,16 @@ public final class RootPerformanceHelper {
     }
 
     private static boolean isMainGameProcess(String cmdline, String executablePath) {
-        if (executablePath == null || executablePath.isEmpty() || cmdline == null || cmdline.isEmpty()) return false;
+        if (cmdline == null || cmdline.isEmpty()) return false;
+        String lowerCmdline = cmdline.toLowerCase();
+        if (lowerCmdline.contains("gta5.exe") || lowerCmdline.contains("gtav.exe")) return true;
+
+        if (executablePath == null || executablePath.isEmpty()) return false;
         String executable = executablePath.replace('\\', '/');
         int slash = executable.lastIndexOf('/');
         if (slash >= 0) executable = executable.substring(slash + 1);
         if (executable.isEmpty()) return false;
-        return cmdline.toLowerCase().contains(executable.toLowerCase());
+        return lowerCmdline.contains(executable.toLowerCase());
     }
 
     private static void applySystemPerformanceProfile(int mainPid, Profile profile) {

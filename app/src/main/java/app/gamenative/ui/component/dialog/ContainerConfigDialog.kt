@@ -1471,3 +1471,4 @@ internal fun ExecutablePathDropdown(
         }
     }
 }
+
