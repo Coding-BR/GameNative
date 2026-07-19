@@ -295,7 +295,7 @@ private data class ControllerStatusSnapshot(
     val guestApi: String,
 )
 
-private val CORE_WINE_PROCESSES = setOf(
+val CORE_WINE_PROCESSES = setOf(
     "wineserver",
     "services",
     "start",
